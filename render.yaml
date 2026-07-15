@@ -1,0 +1,30 @@
+# Render Blueprint Configuration for WeildBuild
+# This file allows one-click deployment via Render's Blueprint feature.
+# Just push this to your repo, then go to: https://dashboard.render.com/blueprints
+
+services:
+  - type: web
+    name: weildbuild
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build:render
+    startCommand: npm run start:render
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false  # Set this in Render dashboard
+      - key: SUPABASE_SERVICE_KEY
+        sync: false  # Set this in Render dashboard
+      - key: B2_KEY_ID
+        sync: false  # Optional: for Backblaze B2 storage
+      - key: B2_APPLICATION_KEY
+        sync: false  # Optional: for Backblaze B2 storage
+      - key: B2_BUCKET_NAME
+        value: weildbuild
+      - key: B2_ENDPOINT
+        value: s3.eu-central-003.backblazeb2.com
+      - key: ALLOWED_ORIGINS
+        value: "*"
+    healthCheckPath: /
+    autoDeploy: true
