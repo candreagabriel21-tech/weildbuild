@@ -4,10 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
-    "start": "NODE_ENV=production node .next/standalone/server.js",
-    "build:render": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
-    "start:render": "NODE_ENV=production node .next/standalone/server.js",
+    "build": "next build",
+    "start": "next start",
     "lint": "eslint .",
     "db:push": "echo 'Skipping db:push - app uses Supabase'"
   },
