@@ -861,19 +861,36 @@ function SelectedTransformControls({ orbitControlsRef }: { orbitControlsRef: Rea
     const partId = primaryPartRef.current?.id;
     if (!partId) return;
 
-    // Guard: Never move/resize the baseplate via the gizmo — it's infrastructure
+    // Guard: Never MOVE the baseplate via the gizmo — it's infrastructure
     // that should stay at its fixed position. This prevents a bug where the gizmo
     // accidentally fires during selection transitions and grid-snapping moves the
     // baseplate from y=-0.5 to y=-1 (a 0.5m downward jump).
+    // NOTE: Scaling the baseplate IS allowed — the user may want to resize it.
     const currentPart = primaryPartRef.current;
-    if (currentPart?.isBaseplate) return;
+    const isBaseplate = !!currentPart?.isBaseplate;
 
     const currentMode = modeRef.current;
     const updateObj = updateObjectRef.current;
     const startMap = dragStartRef.current;
-    const start = startMap.get(partId);
+    let start = startMap.get(partId);
+
+    // Fallback: if drag-start data isn't available yet (e.g. dragging-changed
+    // hasn't fired or the listener wasn't attached on first render), populate
+    // it from the current part state. This makes the resize tool robust against
+    // timing issues that previously caused it to silently no-op.
+    if (!start && currentPart) {
+      start = {
+        position: { ...currentPart.position },
+        rotation: { ...currentPart.rotation },
+        size: { ...currentPart.size },
+      };
+      startMap.set(partId, start);
+    }
 
     if (currentMode === 'translate') {
+      // Baseplate: never move (see guard above)
+      if (isBaseplate) return;
+
       let x = targetObject.position.x;
       let y = targetObject.position.y;
       let z = targetObject.position.z;
@@ -918,14 +935,9 @@ function SelectedTransformControls({ orbitControlsRef }: { orbitControlsRef: Rea
       // The face AWAY from the camera stays fixed while the face
       // closest to the camera moves. This is intuitive — the face
       // you're looking at grows toward you, the back stays put.
-
-      // BAIL OUT if drag-start data isn't available. The dragging-changed
-      // event populates dragStartRef.current; if it hasn't fired yet (race
-      // condition on the very first onObjectChange), `start` is undefined.
-      // Previously the else branch used the raw scale multiplier as the
-      // size (e.g. (2, 1, 1)) — that corrupted the part's dimensions and
-      // made the resize tool appear "broken". Skipping this frame is safe:
-      // the user hasn't moved the mouse yet, so there's nothing to update.
+      //
+      // `start` is always populated at this point — either by the
+      // dragging-changed event or by the fallback above.
       if (!start) return;
 
       const sx = targetObject.scale.x;
@@ -958,19 +970,25 @@ function SelectedTransformControls({ orbitControlsRef }: { orbitControlsRef: Rea
       // axis (anchor the negative face), -1 if on the negative side
       // (anchor the positive face). Only shift position for axes that
       // actually changed size.
-      const anchor = scaleAnchorSignRef.current;
-      const dx = newSize.x - start.size.x;
-      const dy = newSize.y - start.size.y;
-      const dz = newSize.z - start.size.z;
-      const newPosition = {
-        x: start.position.x + anchor.x * dx / 2,
-        y: start.position.y + anchor.y * dy / 2,
-        z: start.position.z + anchor.z * dz / 2,
-      };
-      updateObj(partId, { size: newSize, position: newPosition });
-      // Keep the gizmo mesh position in sync so the gizmo stays attached
-      // to the part's new center during the drag.
-      targetObject.position.set(newPosition.x, newPosition.y, newPosition.z);
+      // Baseplate: skip the position shift — it should stay anchored at its
+      // current position (only the size changes, the center stays put).
+      if (isBaseplate) {
+        updateObj(partId, { size: newSize });
+      } else {
+        const anchor = scaleAnchorSignRef.current;
+        const dx = newSize.x - start.size.x;
+        const dy = newSize.y - start.size.y;
+        const dz = newSize.z - start.size.z;
+        const newPosition = {
+          x: start.position.x + anchor.x * dx / 2,
+          y: start.position.y + anchor.y * dy / 2,
+          z: start.position.z + anchor.z * dz / 2,
+        };
+        updateObj(partId, { size: newSize, position: newPosition });
+        // Keep the gizmo mesh position in sync so the gizmo stays attached
+        // to the part's new center during the drag.
+        targetObject.position.set(newPosition.x, newPosition.y, newPosition.z);
+      }
 
       // Reset the visual scale — for Block/Wedge/Spawn this is (1,1,1),
       // for Sphere/Cylinder this is the new size (since they use unit geometry).
@@ -1409,6 +1427,7 @@ export function PlayCharacter({ orbitControlsRef }: { orbitControlsRef: React.Mu
   const groupRef = useRef<THREE.Group>(null);
   const walkPhaseRef = useRef(0);
   const isJumpingRef = useRef(false);
+  const lastHPRef = useRef(100);  // tracks previous health for death detection
 
   // Initialize character controller when test play mode starts
   useEffect(() => {
@@ -1469,6 +1488,43 @@ export function PlayCharacter({ orbitControlsRef }: { orbitControlsRef: React.Mu
       });
       controller.position = { ...spawnPos };
       controller.velocity = { x: 0, y: 0, z: 0 };
+    }
+
+    // ─── Teleport handling ───
+    // WeildCode rules (teleport_player, teleport_player_to_part) set
+    // playState.teleportPosition to request a teleport. PlayCharacter picks
+    // it up here, moves the controller to the new position, and clears the
+    // request. The controller can't be touched directly by the engine (it
+    // lives inside this component), so this indirection is necessary.
+    if (currentPlayState.teleportPosition) {
+      controller.position = { ...currentPlayState.teleportPosition };
+      controller.velocity = { x: 0, y: 0, z: 0 };
+      // Clear the teleport request so it only fires once
+      useStudioStore.getState().setPlayState({ teleportPosition: null });
+    }
+
+    // ─── Death + respawn handling ───
+    // When health hits 0 (kill_player or damage), respawn at the spawn point
+    // and restore full health. Uses a ref to only trigger once per death.
+    {
+      const currentHp = useStudioStore.getState().playState.characterHealth;
+      if (currentHp <= 0 && lastHPRef.current > 0) {
+        // Find spawn point
+        let spawnPos = { x: 0, y: 5, z: 0 };
+        useStudioStore.getState().objects.forEach((obj) => {
+          if (isPart(obj) && obj.isSpawnPoint) {
+            spawnPos = { x: obj.position.x, y: obj.position.y + 2, z: obj.position.z };
+          }
+        });
+        controller.position = { ...spawnPos };
+        controller.velocity = { x: 0, y: 0, z: 0 };
+        const maxHp = useStudioStore.getState().playState.characterMaxHealth;
+        useStudioStore.getState().setPlayState({
+          characterHealth: maxHp,
+          teleportPosition: null,
+        });
+      }
+      lastHPRef.current = currentHp;
     }
 
     // Update walk animation phase

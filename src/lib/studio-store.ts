@@ -250,6 +250,18 @@ export interface PlayState {
   characterVelocity: Vector3;
   isGrounded: boolean;
   characterRotation: number; // Y-axis rotation in radians
+  // ─── Player Health ───
+  // Read/written by WeildCode rules (modify_player_health, kill_player, heal_player).
+  // The GamePlayer / PlayCharacter UI can read this to display a health bar.
+  characterHealth: number;
+  characterMaxHealth: number;
+  // ─── Teleport Request ───
+  // When set to a non-null Vector3, PlayCharacter moves the character controller
+  // to this position on the next frame, then clears it. This is how WeildCode
+  // teleport_player / teleport_player_to_part actions move the player — they
+  // can't touch the controller directly (it lives inside PlayCharacter), so
+  // they write to this field and PlayCharacter picks it up.
+  teleportPosition: Vector3 | null;
 }
 
 // ─── Simulation State (inline physics, no character) ───
@@ -698,6 +710,9 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
     characterVelocity: { x: 0, y: 0, z: 0 },
     isGrounded: false,
     characterRotation: 0,
+    characterHealth: 100,
+    characterMaxHealth: 100,
+    teleportPosition: null,
   },
   simulationState: {
     isSimulating: false,
@@ -2013,6 +2028,9 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
         characterVelocity: { x: 0, y: 0, z: 0 },
         isGrounded: false,
         characterRotation: 0,
+        characterHealth: 100,
+        characterMaxHealth: 100,
+        teleportPosition: null,
       },
       simulationState: {
         isSimulating: false,
@@ -2184,6 +2202,9 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
         characterVelocity: { x: 0, y: 0, z: 0 },
         isGrounded: false,
         characterRotation: 0,
+        characterHealth: 100,
+        characterMaxHealth: 100,
+        teleportPosition: null,
       },
     });
   },
@@ -2205,6 +2226,9 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
         characterVelocity: { x: 0, y: 0, z: 0 },
         isGrounded: false,
         characterRotation: 0,
+        characterHealth: 100,
+        characterMaxHealth: 100,
+        teleportPosition: null,
       },
     });
 
@@ -2233,6 +2257,9 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
         characterVelocity: { x: 0, y: 0, z: 0 },
         isGrounded: false,
         characterRotation: 0,
+        characterHealth: 100,
+        characterMaxHealth: 100,
+        teleportPosition: null,
       },
     });
   },

@@ -273,10 +273,22 @@ export type ActionType =
   | 'change_material'      // Change material
   | 'change_transparency'  // Change transparency
   | 'apply_force'          // Apply a directional force
-  | 'apply_explosion'      // Create an explosion
+  | 'apply_explosion'      // Create an explosion (legacy name, kept for backwards compat)
+  | 'explode'              // Create an explosion (new name — same as apply_explosion)
   | 'wait'                 // Wait N seconds
   | 'play_sound'           // Play a sound effect
-  | 'visual_effect'        // Fire / smoke / light
+  | 'visual_effect'        // Fire / smoke / light (legacy generic action)
+  | 'go_on_fire'           // Add a fire effect to this part
+  | 'light_up'             // Add a light effect to this part
+  | 'release_smoke'        // Add a smoke effect to this part
+  | 'extinguish'           // Remove fire effect (fade out gradually)
+  | 'disable_light'        // Remove light effect (fade out gradually)
+  | 'clear_smoke'          // Remove smoke effect (fade out gradually)
+  | 'teleport_player'      // Teleport player to an xyz position (per-axis relative)
+  | 'teleport_player_to_part' // Teleport player to a named part (face + offset)
+  | 'modify_player_health' // Modify player's health (relative or absolute)
+  | 'kill_player'          // Kill the player (set health to 0)
+  | 'heal_player'          // Heal the player to full health
   | 'repeat'               // Repeat N times
   | 'repeat_every'         // Repeat every N seconds
   | 'tell_object'          // Tell another object to perform actions
@@ -291,7 +303,7 @@ export type ActionType =
 export interface ActionParam {
   key: string;
   label: string;
-  type: 'number' | 'string' | 'select' | 'vector3' | 'color' | 'boolean';
+  type: 'number' | 'string' | 'select' | 'vector3' | 'color' | 'boolean' | 'vector3_relative';
   default?: any;
   options?: { label: string; value: string }[];
 }
@@ -479,8 +491,8 @@ export const ACTION_DEFINITIONS: ActionDefinition[] = [
   },
   {
     type: 'visual_effect',
-    label: 'Visual effect',
-    description: 'Add a fire, smoke, or light effect',
+    label: 'Visual effect (legacy)',
+    description: 'Add a fire, smoke, or light effect (legacy — use the specific actions below)',
     icon: 'Sparkles',
     params: [
       { key: 'effectType', label: 'Effect', type: 'select', default: 'Fire', options: [
@@ -491,6 +503,127 @@ export const ACTION_DEFINITIONS: ActionDefinition[] = [
       { key: 'color', label: 'Color', type: 'color', default: '#ff6600' },
       { key: 'size', label: 'Size', type: 'number', default: 3 },
     ],
+  },
+  {
+    type: 'explode',
+    label: 'Explode',
+    description: 'Create an explosion at this object\'s position',
+    icon: 'Flame',
+    params: [
+      { key: 'radius', label: 'Blast radius', type: 'number', default: 8 },
+      { key: 'pressure', label: 'Blast pressure', type: 'number', default: 500000 },
+    ],
+  },
+  {
+    type: 'go_on_fire',
+    label: 'Go on fire',
+    description: 'Add a fire effect to this part',
+    icon: 'Flame',
+    params: [
+      { key: 'color', label: 'Color', type: 'color', default: '#ff6600' },
+      { key: 'size', label: 'Size', type: 'number', default: 3 },
+    ],
+  },
+  {
+    type: 'light_up',
+    label: 'Light up',
+    description: 'Add a light effect to this part',
+    icon: 'Lightbulb',
+    params: [
+      { key: 'color', label: 'Color', type: 'color', default: '#ffeb3b' },
+      { key: 'brightness', label: 'Brightness', type: 'number', default: 2 },
+      { key: 'range', label: 'Range', type: 'number', default: 10 },
+    ],
+  },
+  {
+    type: 'release_smoke',
+    label: 'Release smoke',
+    description: 'Add a smoke effect to this part',
+    icon: 'Cloud',
+    params: [
+      { key: 'color', label: 'Color', type: 'color', default: '#666666' },
+      { key: 'size', label: 'Size', type: 'number', default: 3 },
+      { key: 'opacity', label: 'Opacity (0-1)', type: 'number', default: 0.5 },
+    ],
+  },
+  {
+    type: 'extinguish',
+    label: 'Extinguish',
+    description: 'Remove the fire effect from this part (fades out gradually)',
+    icon: 'CloudRain',
+    params: [
+      { key: 'fadeDuration', label: 'Fade duration (seconds)', type: 'number', default: 1 },
+    ],
+  },
+  {
+    type: 'disable_light',
+    label: 'Disable light',
+    description: 'Remove the light effect from this part (fades out gradually)',
+    icon: 'Lightbulb',
+    params: [
+      { key: 'fadeDuration', label: 'Fade duration (seconds)', type: 'number', default: 1 },
+    ],
+  },
+  {
+    type: 'clear_smoke',
+    label: 'Clear smoke',
+    description: 'Remove the smoke effect from this part (fades out gradually)',
+    icon: 'Wind',
+    params: [
+      { key: 'fadeDuration', label: 'Fade duration (seconds)', type: 'number', default: 1 },
+    ],
+  },
+  {
+    type: 'teleport_player_to_part',
+    label: 'Teleport player to part',
+    description: 'Teleport the player to a named part (top, bottom, or side)',
+    icon: 'MapPin',
+    params: [
+      { key: 'targetName', label: 'Target part name', type: 'string', default: '' },
+      { key: 'face', label: 'Teleport to', type: 'select', default: 'top', options: [
+        { label: 'Top of part', value: 'top' },
+        { label: 'Bottom of part', value: 'bottom' },
+        { label: 'Left of part (-X)', value: 'left' },
+        { label: 'Right of part (+X)', value: 'right' },
+        { label: 'Front of part (-Z)', value: 'front' },
+        { label: 'Back of part (+Z)', value: 'back' },
+        { label: 'Center of part', value: 'center' },
+      ]},
+      { key: 'offset', label: 'Offset (x,y,z)', type: 'vector3', default: { x: 0, y: 0, z: 0 } },
+    ],
+  },
+  {
+    type: 'teleport_player',
+    label: 'Teleport player',
+    description: 'Teleport the player to a position. Per-axis "relative" adds to current position.',
+    icon: 'Move',
+    params: [
+      { key: 'position', label: 'Position (x,y,z)', type: 'vector3_relative', default: { x: 0, y: 5, z: 0, relativeX: false, relativeY: false, relativeZ: false } },
+    ],
+  },
+  {
+    type: 'modify_player_health',
+    label: 'Modify player\'s health',
+    description: 'Modify the player\'s health by health points. "Relative" adds to current health.',
+    icon: 'Heart',
+    params: [
+      { key: 'health', label: 'Health points', type: 'number', default: -10 },
+      { key: 'relative', label: 'Relative (add to current)', type: 'boolean', default: true },
+    ],
+  },
+  {
+    type: 'kill_player',
+    label: 'Kill player',
+    description: 'Set the player\'s health to 0 (kills the player)',
+    icon: 'Skull',
+    params: [],
+  },
+  {
+    type: 'heal_player',
+    label: 'Heal player',
+    description: 'Restore the player\'s health to full',
+    icon: 'Heart',
+    params: [],
   },
   {
     type: 'repeat',

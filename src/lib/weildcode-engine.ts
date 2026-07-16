@@ -65,6 +65,15 @@ class WeildCodeEngine {
   // Track floating name labels (partId -> { text, startTime, duration })
   private nameLabels: Map<string, { text: string; color: string; fontSize: number; startTime: number; duration: number }> = new Map();
 
+  // ─── Fading Effects ───
+  // When a user triggers extinguish / disable_light / clear_smoke, the matching
+  // effect is NOT removed instantly. Instead it's added to this map and gradually
+  // faded out (opacity → 0, size → 0) over fadeDuration seconds. Once the fade
+  // completes, the effect is removed from the part. This gives a smooth visual
+  // transition instead of a jarring pop.
+  // Key: effectId. Value: { partId, fadeDuration, elapsed, startOpacity, startSize }
+  private fadingEffects: Map<string, { partId: string; fadeDuration: number; elapsed: number; startOpacity: number; startSize: number; startBrightness?: number; startRange?: number }> = new Map();
+
   // ─── Start / Stop ───
 
   start() {
@@ -82,6 +91,7 @@ class WeildCodeEngine {
     this.conditionCheckAccumulators.clear();
     this.coinFlipFired.clear();
     this.nameLabels.clear();
+    this.fadingEffects.clear();
 
     // Snapshot current global variables
     const vars = useStudioStore.getState().globalVariables;
@@ -121,6 +131,7 @@ class WeildCodeEngine {
     this.timers.clear();
     this.pendingWaits.clear();
     this.createdParts.clear();
+    this.fadingEffects.clear();
     // Clear any on-screen messages
     useStudioStore.getState().clearScreenMessages();
   }
@@ -186,8 +197,59 @@ class WeildCodeEngine {
     // Update floating name labels
     this.updateNameLabels();
 
+    // Update fading effects (extinguish / disable_light / clear_smoke)
+    this.updateFadingEffects(dt);
+
     this.animFrameId = requestAnimationFrame(this.update);
   };
+
+  // ─── Fading Effects Update ───
+
+  private updateFadingEffects(dt: number) {
+    if (this.fadingEffects.size === 0) return;
+    const state = useStudioStore.getState();
+    const toRemove: string[] = [];
+
+    for (const [effectId, fade] of this.fadingEffects.entries()) {
+      fade.elapsed += dt;
+      const progress = Math.min(fade.elapsed / fade.fadeDuration, 1);
+      // Lerp opacity/size/brightness from start value → 0
+      const opacity = fade.startOpacity * (1 - progress);
+      const size = fade.startSize * (1 - progress);
+      const brightness = fade.startBrightness !== undefined ? fade.startBrightness * (1 - progress) : undefined;
+      const range = fade.startRange !== undefined ? fade.startRange * (1 - progress) : undefined;
+
+      // Update the effect on the part
+      const part = state.objects.get(fade.partId);
+      if (!part || !isPart(part)) {
+        toRemove.push(effectId);
+        continue;
+      }
+      const effects = part.effects || [];
+      const effect = effects.find((e) => e.id === effectId);
+      if (!effect) {
+        // Effect was removed by other means — stop fading
+        toRemove.push(effectId);
+        continue;
+      }
+      state.updateEffect(fade.partId, effectId, {
+        opacity: Math.max(0, opacity),
+        size: Math.max(0.01, size),
+        ...(brightness !== undefined ? { brightness: Math.max(0, brightness) } : {}),
+        ...(range !== undefined ? { range: Math.max(0.01, range) } : {}),
+      });
+
+      if (progress >= 1) {
+        // Fade complete — remove the effect entirely
+        state.removeEffect(fade.partId, effectId);
+        toRemove.push(effectId);
+      }
+    }
+
+    for (const id of toRemove) {
+      this.fadingEffects.delete(id);
+    }
+  }
 
   // ─── Trigger Firing ───
 
@@ -479,6 +541,93 @@ class WeildCodeEngine {
         });
         break;
       }
+      case 'explode': {
+        // Same as apply_explosion — just a better name
+        const radius = action.params.radius || 8;
+        const pressure = action.params.pressure || 500000;
+        useStudioStore.getState().createExplosion(
+          { ...part.position },
+          radius,
+          pressure,
+        );
+        break;
+      }
+      case 'go_on_fire': {
+        const color = action.params.color || '#ff6600';
+        const size = action.params.size || 3;
+        useStudioStore.getState().addEffect(partId, {
+          id: `fx_fire_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          type: 'Fire',
+          color,
+          size,
+          enabled: true,
+        });
+        break;
+      }
+      case 'light_up': {
+        const color = action.params.color || '#ffeb3b';
+        const brightness = action.params.brightness ?? 2;
+        const range = action.params.range ?? 10;
+        useStudioStore.getState().addEffect(partId, {
+          id: `fx_light_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          type: 'Light',
+          color,
+          size: range / 3,
+          enabled: true,
+          brightness,
+          range,
+        });
+        break;
+      }
+      case 'release_smoke': {
+        const color = action.params.color || '#666666';
+        const size = action.params.size || 3;
+        const opacity = action.params.opacity ?? 0.5;
+        useStudioStore.getState().addEffect(partId, {
+          id: `fx_smoke_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          type: 'Smoke',
+          color,
+          size,
+          enabled: true,
+          opacity,
+        });
+        break;
+      }
+      case 'extinguish': {
+        this.startEffectFade(partId, 'Fire', action.params.fadeDuration ?? 1);
+        break;
+      }
+      case 'disable_light': {
+        this.startEffectFade(partId, 'Light', action.params.fadeDuration ?? 1);
+        break;
+      }
+      case 'clear_smoke': {
+        this.startEffectFade(partId, 'Smoke', action.params.fadeDuration ?? 1);
+        break;
+      }
+      case 'teleport_player_to_part': {
+        this.executeTeleportPlayerToPart(partId, action);
+        break;
+      }
+      case 'teleport_player': {
+        this.executeTeleportPlayer(action);
+        break;
+      }
+      case 'modify_player_health': {
+        this.executeModifyPlayerHealth(action);
+        break;
+      }
+      case 'kill_player': {
+        useStudioStore.getState().setPlayState({ characterHealth: 0 });
+        useStudioStore.getState().addConsoleMessage('info', `[WeildCode] Player killed`);
+        break;
+      }
+      case 'heal_player': {
+        const maxHp = useStudioStore.getState().playState.characterMaxHealth;
+        useStudioStore.getState().setPlayState({ characterHealth: maxHp });
+        useStudioStore.getState().addConsoleMessage('info', `[WeildCode] Player healed to full (${maxHp} HP)`);
+        break;
+      }
       case 'repeat': {
         const count = action.params.count || 3;
         const delayBetween = action.params.delayBetween || 0;
@@ -754,6 +903,147 @@ class WeildCodeEngine {
         },
       });
     }
+  }
+
+  // ─── Effect Fading ───
+  // Find the first effect of the given type on the part and start fading it out.
+  // The fade is handled by updateFadingEffects() on each frame.
+  private startEffectFade(partId: string, effectType: 'Fire' | 'Smoke' | 'Light', fadeDuration: number) {
+    const state = useStudioStore.getState();
+    const part = state.objects.get(partId);
+    if (!part || !isPart(part)) return;
+    const effects = part.effects || [];
+    const effect = effects.find((e) => e.type === effectType && e.enabled);
+    if (!effect) {
+      useStudioStore.getState().addConsoleMessage('warn', `[WeildCode] No ${effectType} effect found on ${part.name}`);
+      return;
+    }
+    // If already fading, reset the timer
+    this.fadingEffects.set(effect.id, {
+      partId,
+      fadeDuration: Math.max(0.1, fadeDuration),
+      elapsed: 0,
+      startOpacity: effect.opacity ?? 1,
+      startSize: effect.size,
+      startBrightness: effect.brightness,
+      startRange: effect.range,
+    });
+    useStudioStore.getState().addConsoleMessage('info', `[WeildCode] Fading ${effectType} on ${part.name} over ${fadeDuration}s`);
+  }
+
+  // ─── Teleport Player To Part ───
+  // Find the named part, compute a position on the chosen face, and set
+  // playState.teleportPosition. PlayCharacter picks this up on the next frame.
+  private executeTeleportPlayerToPart(sourcePartId: string, action: WeildCodeAction) {
+    const targetName = action.params.targetName || '';
+    const face = action.params.face || 'top';
+    const offset = action.params.offset || { x: 0, y: 0, z: 0 };
+
+    if (!targetName) {
+      useStudioStore.getState().addConsoleMessage('warn', `[WeildCode] teleport_player_to_part: no target name specified`);
+      return;
+    }
+
+    const state = useStudioStore.getState();
+    let targetPart: StudioPart | null = null;
+    state.objects.forEach((obj) => {
+      if (isPart(obj) && obj.name === targetName) {
+        targetPart = obj;
+      }
+    });
+
+    if (!targetPart) {
+      useStudioStore.getState().addConsoleMessage('warn', `[WeildCode] teleport_player_to_part: part "${targetName}" not found`);
+      return;
+    }
+
+    // After the null check, TypeScript still narrows targetPart to `never`
+    // because the assignment happened inside a closure. Re-assign to a
+    // non-null typed local to help the compiler.
+    const tp: StudioPart = targetPart;
+
+    // Compute the teleport position based on the chosen face.
+    // The player is placed just outside the face so they don't get stuck inside the part.
+    const px = tp.position.x;
+    const py = tp.position.y;
+    const pz = tp.position.z;
+    const sx = tp.size.x;
+    const sy = tp.size.y;
+    const sz = tp.size.z;
+    // Player offset from the face surface (so they stand ON the face, not embedded in it)
+    const PLAYER_HALF_HEIGHT = 1.0; // approx half the character height
+
+    let teleportPos: { x: number; y: number; z: number };
+    switch (face) {
+      case 'top':
+        teleportPos = { x: px, y: py + sy / 2 + PLAYER_HALF_HEIGHT, z: pz };
+        break;
+      case 'bottom':
+        teleportPos = { x: px, y: py - sy / 2 - PLAYER_HALF_HEIGHT, z: pz };
+        break;
+      case 'left': // -X
+        teleportPos = { x: px - sx / 2 - 0.5, y: py, z: pz };
+        break;
+      case 'right': // +X
+        teleportPos = { x: px + sx / 2 + 0.5, y: py, z: pz };
+        break;
+      case 'front': // -Z
+        teleportPos = { x: px, y: py, z: pz - sz / 2 - 0.5 };
+        break;
+      case 'back': // +Z
+        teleportPos = { x: px, y: py, z: pz + sz / 2 + 0.5 };
+        break;
+      case 'center':
+      default:
+        teleportPos = { x: px, y: py, z: pz };
+        break;
+    }
+
+    // Apply user-specified offset
+    teleportPos.x += offset.x || 0;
+    teleportPos.y += offset.y || 0;
+    teleportPos.z += offset.z || 0;
+
+    useStudioStore.getState().setPlayState({ teleportPosition: teleportPos });
+    useStudioStore.getState().addConsoleMessage('info', `[WeildCode] Teleported player to ${targetName} (${face})`);
+  }
+
+  // ─── Teleport Player ───
+  // Teleport the player to an xyz position. Each axis has a "relative" flag —
+  // when true, the value is ADDED to the current position; when false, it REPLACES it.
+  private executeTeleportPlayer(action: WeildCodeAction) {
+    const pos = action.params.position || { x: 0, y: 5, z: 0 };
+    const relativeX = !!(pos.relativeX);
+    const relativeY = !!(pos.relativeY);
+    const relativeZ = !!(pos.relativeZ);
+
+    const currentPos = useStudioStore.getState().playState.characterPosition;
+    const newPos = {
+      x: relativeX ? currentPos.x + (pos.x || 0) : (pos.x || 0),
+      y: relativeY ? currentPos.y + (pos.y || 0) : (pos.y || 0),
+      z: relativeZ ? currentPos.z + (pos.z || 0) : (pos.z || 0),
+    };
+
+    useStudioStore.getState().setPlayState({ teleportPosition: newPos });
+    useStudioStore.getState().addConsoleMessage('info', `[WeildCode] Teleported player to (${newPos.x.toFixed(1)}, ${newPos.y.toFixed(1)}, ${newPos.z.toFixed(1)})`);
+  }
+
+  // ─── Modify Player Health ───
+  // Modify the player's health. When "relative" is true, the value is added to
+  // the current health; when false, it replaces it. Clamped to [0, maxHealth].
+  private executeModifyPlayerHealth(action: WeildCodeAction) {
+    const healthDelta = action.params.health ?? 0;
+    const relative = action.params.relative !== false; // default true
+
+    const state = useStudioStore.getState();
+    const currentHp = state.playState.characterHealth;
+    const maxHp = state.playState.characterMaxHealth;
+    const newHp = relative
+      ? Math.max(0, Math.min(maxHp, currentHp + healthDelta))
+      : Math.max(0, Math.min(maxHp, healthDelta));
+
+    state.setPlayState({ characterHealth: newHp });
+    useStudioStore.getState().addConsoleMessage('info', `[WeildCode] Player health: ${currentHp} → ${newHp} (${relative ? 'relative' : 'absolute'})`);
   }
 
   private executeRemoveFromWorkspace(partId: string, action: WeildCodeAction) {

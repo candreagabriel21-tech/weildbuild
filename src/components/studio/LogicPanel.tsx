@@ -51,6 +51,12 @@ import {
   Type,
   Check,
   Globe,
+  MapPin,
+  Heart,
+  Skull,
+  Lightbulb,
+  CloudRain,
+  Wind,
 } from 'lucide-react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
@@ -97,6 +103,13 @@ function ActionIcon({ icon, className = 'w-3.5 h-3.5' }: { icon: string; classNa
     case 'Variable': return <Box className={className} />;
     case 'Copy': return <Copy className={className} />;
     case 'Globe': return <Globe className={className} />;
+    case 'MapPin': return <MapPin className={className} />;
+    case 'Heart': return <Heart className={className} />;
+    case 'Skull': return <Skull className={className} />;
+    case 'Lightbulb': return <Lightbulb className={className} />;
+    case 'CloudRain': return <CloudRain className={className} />;
+    case 'Wind': return <Wind className={className} />;
+    case 'Cloud': return <Cloud className={className} />;
     default: return <Zap className={className} />;
   }
 }
@@ -138,6 +151,13 @@ const ACTION_ICON_COLOR: Record<string, string> = {
   Variable: 'text-violet-400/60',
   Copy: 'text-cyan-400/60',
   Globe: 'text-blue-400/60',
+  MapPin: 'text-emerald-400/60',
+  Heart: 'text-rose-400/60',
+  Skull: 'text-red-500/60',
+  Lightbulb: 'text-yellow-400/60',
+  CloudRain: 'text-sky-400/60',
+  Wind: 'text-slate-300/60',
+  Cloud: 'text-gray-400/60',
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -729,6 +749,28 @@ function ParamInput({
     );
   }
 
+  if (param.type === 'boolean') {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className={`${sizeClass} text-white/30 w-16 shrink-0`}>{param.label}</span>
+        <button
+          onClick={() => onChange(!value)}
+          className={`flex items-center gap-1 ${sizeClass} px-1.5 py-0.5 rounded border transition-colors ${
+            value
+              ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+              : 'bg-white/5 border-white/10 text-white/40 hover:text-white/60'
+          }`}
+        >
+          {value
+            ? <ToggleRight className="w-3 h-3" />
+            : <ToggleLeft className="w-3 h-3" />
+          }
+          <span>{value ? 'Yes' : 'No'}</span>
+        </button>
+      </div>
+    );
+  }
+
   if (param.type === 'vector3') {
     const v = value || { x: 0, y: 0, z: 0 };
     return (
@@ -750,6 +792,44 @@ function ParamInput({
     );
   }
 
+  if (param.type === 'vector3_relative') {
+    // A vector3 where each axis has its own "relative" checkbox.
+    // When relative is true, the value is ADDED to the current position;
+    // when false, it REPLACES it.
+    const v = value || { x: 0, y: 0, z: 0, relativeX: false, relativeY: false, relativeZ: false };
+    return (
+      <div className="space-y-0.5">
+        <span className={`${sizeClass} text-white/30`}>{param.label}</span>
+        {(['x', 'y', 'z'] as const).map((axis) => {
+          const relKey = `relative${axis.toUpperCase()}` as 'relativeX' | 'relativeY' | 'relativeZ';
+          return (
+            <div key={axis} className="flex items-center gap-1">
+              <span className={`${sizeClass} text-white/20 w-3`}>{axis.toUpperCase()}</span>
+              <input
+                type="number"
+                value={v[axis] ?? 0}
+                step={0.5}
+                onChange={(e) => onChange({ ...v, [axis]: parseFloat(e.target.value) || 0 })}
+                className={`w-12 ${sizeClass} bg-white/5 border border-white/10 text-white/80 px-1 py-0.5 rounded`}
+              />
+              <button
+                onClick={() => onChange({ ...v, [relKey]: !v[relKey] })}
+                className={`flex items-center gap-0.5 ${sizeClass} px-1 py-0.5 rounded border transition-colors ${
+                  v[relKey]
+                    ? 'bg-blue-500/15 border-blue-500/30 text-blue-400'
+                    : 'bg-white/5 border-white/10 text-white/40 hover:text-white/60'
+                }`}
+                title={v[relKey] ? 'Relative (adds to current position)' : 'Absolute (replaces current position)'}
+              >
+                {v[relKey] ? 'Rel' : 'Abs'}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   if (param.type === 'number') {
     return (
       <div className="flex items-center gap-1.5">
@@ -757,9 +837,9 @@ function ParamInput({
         <input
           type="number"
           value={value ?? 0}
-          step={param.key === 'transparency' ? 0.1 : 1}
-          min={param.key === 'transparency' ? 0 : undefined}
-          max={param.key === 'transparency' ? 1 : undefined}
+          step={param.key === 'transparency' || param.key === 'opacity' ? 0.1 : 1}
+          min={param.key === 'transparency' || param.key === 'opacity' ? 0 : undefined}
+          max={param.key === 'transparency' || param.key === 'opacity' ? 1 : undefined}
           onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
           className={`w-16 ${sizeClass} bg-white/5 border border-white/10 text-white/80 px-1 py-0.5 rounded`}
         />

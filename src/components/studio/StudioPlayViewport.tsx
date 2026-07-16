@@ -550,6 +550,7 @@ function GamePlayerCharacter({
   const groupRef = useRef<THREE.Group>(null);
   const characterVisibleRef = useRef(true);
   const lastPositionBroadcast = useRef(0);
+  const lastHPRef = useRef(100);  // tracks previous health for death detection
 
   // Apply external zoom override
   useEffect(() => {
@@ -867,6 +868,44 @@ function GamePlayerCharacter({
       playerVelX.current = 0;
       playerVelY.current = 0;
       playerVelZ.current = 0;
+    }
+
+    // ─── Teleport handling ───
+    // WeildCode rules (teleport_player, teleport_player_to_part) set
+    // playState.teleportPosition to request a teleport. We pick it up here,
+    // move the player to the new position, and clear the request.
+    {
+      const tp = useStudioStore.getState().playState.teleportPosition;
+      if (tp) {
+        playerPos.current = [tp.x, tp.y, tp.z];
+        playerVelX.current = 0;
+        playerVelY.current = 0;
+        playerVelZ.current = 0;
+        useStudioStore.getState().setPlayState({ teleportPosition: null });
+      }
+    }
+
+    // ─── Death + respawn handling ───
+    // When the player's health hits 0 (kill_player or modify_player_health
+    // bringing them to 0), respawn them at the spawn point and restore
+    // full health. We use a ref to track the previous health so we only
+    // trigger the respawn once per death (not every frame while HP is 0).
+    {
+      const currentHp = useStudioStore.getState().playState.characterHealth;
+      if (currentHp <= 0 && lastHPRef.current > 0) {
+        // Player just died — respawn at spawn point
+        playerPos.current = [...spawnPosition];
+        playerVelX.current = 0;
+        playerVelY.current = 0;
+        playerVelZ.current = 0;
+        const maxHp = useStudioStore.getState().playState.characterMaxHealth;
+        useStudioStore.getState().setPlayState({
+          characterHealth: maxHp,
+          teleportPosition: null,
+        });
+        playSound('death', 0.4);
+      }
+      lastHPRef.current = currentHp;
     }
 
     // ─── Footstep sounds ───
@@ -1239,9 +1278,17 @@ export function StudioPlayViewport({
   spawnPosition = [0, 3, 0],
   animationsEnabled = true,
 }: StudioPlayViewportProps) {
+  // ─── Wire the HP bar to the real play state ───
+  // The HP bar in GamePlayer reads from onHPChange(hp, max). Previously this
+  // was hardcoded to (100, 100) — so the bar always showed full even when
+  // WeildCode rules (modify_player_health, kill_player, heal_player) changed
+  // the player's health. Now we subscribe to playState.characterHealth and
+  // characterMaxHealth from the studio store and report the real values.
+  const characterHealth = useStudioStore((s) => s.playState.characterHealth);
+  const characterMaxHealth = useStudioStore((s) => s.playState.characterMaxHealth);
   useEffect(() => {
-    if (onHPChange) onHPChange(100, 100);
-  }, [onHPChange]);
+    if (onHPChange) onHPChange(characterHealth, characterMaxHealth);
+  }, [onHPChange, characterHealth, characterMaxHealth]);
 
   return (
     <div className="w-full h-full relative">
