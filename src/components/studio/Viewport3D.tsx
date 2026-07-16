@@ -25,11 +25,6 @@ export const playInput: CharacterInput = {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('keydown', (e) => {
-    // Don't capture movement keys when typing in an input/textarea
-    const target = e.target as HTMLElement;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-      return;
-    }
     switch (e.code) {
       case 'KeyW': case 'ArrowUp': playInput.forward = true; break;
       case 'KeyS': case 'ArrowDown': playInput.backward = true; break;
@@ -39,10 +34,6 @@ if (typeof window !== 'undefined') {
     }
   });
   window.addEventListener('keyup', (e) => {
-    const target = e.target as HTMLElement;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-      return;
-    }
     switch (e.code) {
       case 'KeyW': case 'ArrowUp': playInput.forward = false; break;
       case 'KeyS': case 'ArrowDown': playInput.backward = false; break;
