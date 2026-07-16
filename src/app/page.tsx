@@ -85,6 +85,20 @@ export default function WeildBuildApp() {
     }
   }, [isLoggedIn]);
 
+  // ─── Real-time polling: refresh data periodically ───
+  // Polls for updates every 5 seconds so changes (description, avatar, games)
+  // show up for other users without needing to refresh the page.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const interval = setInterval(() => {
+      if (!playingGame) {
+        refreshUser();
+        fetchGames();
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, playingGame, refreshUser, fetchGames]);
+
   // Lock body scroll when playing a game, allow scroll otherwise
   useEffect(() => {
     if (playingGame) {
@@ -101,7 +115,9 @@ export default function WeildBuildApp() {
 
   useEffect(() => {
     if (isLoggedIn && !socketInstanceRef.current) {
-      const s = io({ path: "/socket.io/", transports: ["websocket", "polling"], forceNew: true, reconnection: true });
+      // Connect to the Socket.io server (use env var or same origin)
+      const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "";
+      const s = io(SOCKET_URL, { path: "/socket.io/", transports: ["websocket", "polling"], forceNew: true, reconnection: true });
       socketInstanceRef.current = s;
       queueMicrotask(() => setSocket(s));
       if (user?.username) s.emit("user:online", { username: user.username });

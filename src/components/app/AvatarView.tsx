@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { User } from "lucide-react";
+import { User, Loader2 } from "lucide-react";
 
 // ==================== AVATAR VIEW ====================
 export function AvatarView({ user, items, onUpdate }: { user: UserData; items: ItemData[]; onUpdate: (updates: Partial<UserData>) => Promise<void> }) {
@@ -42,7 +42,7 @@ export function AvatarView({ user, items, onUpdate }: { user: UserData; items: I
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-white flex items-center gap-2"><User className="w-6 h-6 text-indigo-400" /> Avatar Editor</h2>
         <Button className="bg-indigo-600 hover:bg-indigo-500" onClick={handleSave} disabled={!hasChanges || saving}>
-          {saving ? "Saving..." : "Save Changes"}
+          {saving ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Saving...</> : "Save Changes"}
         </Button>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
