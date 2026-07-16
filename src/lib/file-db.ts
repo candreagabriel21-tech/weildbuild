@@ -601,7 +601,8 @@ export async function getGame(gameId: string) {
       .eq("id", gameId)
       .single();
     if (error || !data) return null;
-    return data;
+    // Flatten extra_data into the game object so the client gets all fields
+    return { ...data, ...(data.extra_data || {}) };
   } catch {
     return null;
   }
@@ -613,7 +614,8 @@ export async function getAllGames() {
       .from("games")
       .select("*");
     if (error || !data) return [];
-    return data;
+    // Flatten extra_data into each game object
+    return data.map((g: any) => ({ ...g, ...(g.extra_data || {}) }));
   } catch {
     return [];
   }
@@ -621,47 +623,83 @@ export async function getAllGames() {
 
 export async function createGameRecord(gameData: any) {
   const id = gameData.id || randomBytes(4).toString("hex");
-  const game = {
-    ...gameData,
+
+  // The games table only has: id, name, description, creator, plays, created, last_update, extra_data
+  // All the other game data (studioState, primitives, spawn_point, sky colors, etc.)
+  // goes into the extra_data JSONB column.
+  const { studioState, primitives, spawn_point, sky_color_top, sky_color_bottom,
+          baseplate_color, baseplate_size, max_players, public: isPublic,
+          multiplayer, ...rest } = gameData;
+
+  const row = {
     id,
+    name: gameData.name || '',
+    description: gameData.description || '',
+    creator: gameData.creator || '',
     plays: 0,
     created: new Date().toISOString(),
     last_update: new Date().toISOString(),
+    extra_data: {
+      studioState, primitives, spawn_point, sky_color_top, sky_color_bottom,
+      baseplate_color, baseplate_size, max_players,
+      public: isPublic, multiplayer,
+      ...rest,  // Any other fields go here too
+    },
   };
+
   try {
     const { data, error } = await supabase
       .from("games")
-      .insert(game)
+      .insert(row)
       .select()
       .single();
     if (error) {
       console.error("[Supabase] createGameRecord error:", error.message);
-      return game; // Return the game object even if insert fails
+      // Return a flattened game object so the client still gets the data
+      return { ...row, ...row.extra_data };
     }
-    return data;
+    // Flatten extra_data back into the game object for the client
+    return { ...data, ...(data.extra_data || {}) };
   } catch {
-    return game;
+    return { ...row, ...row.extra_data };
   }
 }
 
 export async function updateGameRecord(gameId: string, updates: any) {
   const game = await getGame(gameId);
   if (!game) return null;
-  const updated = { ...updates, last_update: new Date().toISOString() };
+
+  // Separate top-level columns from extra_data fields
+  const topLevelFields = ['name', 'description', 'creator', 'plays'];
+  const topLevelUpdates: any = { last_update: new Date().toISOString() };
+  const extraDataUpdates: any = {};
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (topLevelFields.includes(key)) {
+      topLevelUpdates[key] = value;
+    } else {
+      extraDataUpdates[key] = value;
+    }
+  }
+
+  // Merge extra_data updates with existing
+  const existingExtra = (game as any).extra_data || {};
+  const newExtraData = { ...existingExtra, ...extraDataUpdates };
+
   try {
     const { data, error } = await supabase
       .from("games")
-      .update(updated)
+      .update({ ...topLevelUpdates, extra_data: newExtraData })
       .eq("id", gameId)
       .select()
       .single();
     if (error) {
       console.error("[Supabase] updateGameRecord error:", error.message);
-      return { ...game, ...updated };
+      return { ...game, ...updates };
     }
-    return data;
+    return { ...data, ...(data.extra_data || {}) };
   } catch {
-    return { ...game, ...updated };
+    return { ...game, ...updates };
   }
 }
 
