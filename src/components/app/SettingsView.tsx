@@ -7,8 +7,7 @@ import { moderateText, isTextClean } from "./shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Shield, Bell, Moon, Info, LogOut, Loader2 } from "lucide-react";
-import { useLoadingAction } from "@/hooks/use-loading-action";
+import { Shield, Bell, Moon, Info, LogOut } from "lucide-react";
 
 // ==================== SETTINGS VIEW ====================
 export function SettingsView({ user, onUpdate, onLogout }: { user: UserData; onUpdate: (updates: Partial<UserData>) => Promise<void>; onLogout: () => void }) {
@@ -28,7 +27,6 @@ export function SettingsView({ user, onUpdate, onLogout }: { user: UserData; onU
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [endOtherSessions, setEndOtherSessions] = useState(false);
-  const { loading: changingPassword, run: runChangePassword } = useLoadingAction();
 
   useEffect(() => { setProfileVisible(user.profile_visible !== false); }, [user.profile_visible]); // eslint-disable-line react-hooks/set-state-in-effect
   useEffect(() => { setNotifyFriends(user.notify_friends !== false); }, [user.notify_friends]); // eslint-disable-line react-hooks/set-state-in-effect
@@ -197,9 +195,7 @@ export function SettingsView({ user, onUpdate, onLogout }: { user: UserData; onU
           </label>
           {passwordError && <p className="text-red-400 text-xs">{passwordError}</p>}
           {passwordSuccess && <p className="text-green-400 text-xs">{passwordSuccess}</p>}
-          <Button onClick={() => runChangePassword(handleChangePassword)} disabled={!oldPassword || !newPassword || !confirmPassword || changingPassword} className="w-full bg-indigo-600 hover:bg-indigo-500">
-            {changingPassword ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Changing...</> : "Change Password"}
-          </Button>
+          <Button onClick={handleChangePassword} disabled={!oldPassword || !newPassword || !confirmPassword} className="w-full bg-indigo-600 hover:bg-indigo-500">Change Password</Button>
         </CardContent>
       </Card>
 

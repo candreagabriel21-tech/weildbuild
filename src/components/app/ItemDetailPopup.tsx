@@ -9,9 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Coins, Palette, User, Calendar, Tag, Copy, X, Check, Info, Shield, Loader2
+  Coins, Palette, User, Calendar, Tag, Copy, X, Check, Info, Shield
 } from "lucide-react";
-import { useLoadingAction } from "@/hooks/use-loading-action";
 
 // ==================== ITEM DETAIL POPUP ====================
 export function ItemDetailPopup({
@@ -28,7 +27,6 @@ export function ItemDetailPopup({
   canAfford: boolean;
 }) {
   const [copied, setCopied] = useState(false);
-  const { loading: buying, run: runBuy } = useLoadingAction();
 
   const handleCopyKey = async () => {
     try {
@@ -167,10 +165,10 @@ export function ItemDetailPopup({
               {onBuy && !owned && (
                 <Button
                   className="w-full bg-amber-600 hover:bg-amber-500 text-sm"
-                  onClick={() => runBuy(() => onBuy(item.id))}
-                  disabled={!canAfford || buying}
+                  onClick={() => onBuy(item.id)}
+                  disabled={!canAfford}
                 >
-                  {buying ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Buying...</> : item.price === 0 ? "Free" : <><Coins className="w-4 h-4 mr-1" /> Buy: {formatPrice(item.price)} WeBuy</>}
+                  {item.price === 0 ? "Free" : <><Coins className="w-4 h-4 mr-1" /> Buy: {formatPrice(item.price)} WeBuy</>}
                 </Button>
               )}
             </CardContent>

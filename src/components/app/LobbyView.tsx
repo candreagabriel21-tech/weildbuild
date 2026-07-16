@@ -128,7 +128,7 @@ export function LobbyView({ user, games, onPlayGame, onCreateGame, onOpenCreate 
                     </button>
                   </div>
                   <div className="flex gap-3 pt-2">
-                    <Button variant="outline" className="flex-1 border-slate-600 text-slate-300" onClick={() => setShowCreate(false)} disabled={creating}>Cancel</Button>
+                    <Button variant="outline" className="flex-1 border-slate-600 text-slate-300" onClick={() => setShowCreate(false)}>Cancel</Button>
                     <Button className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white" onClick={handleCreate} disabled={creating || !newName.trim()}>{creating ? "Creating..." : "Create"}</Button>
                   </div>
                 </CardContent>

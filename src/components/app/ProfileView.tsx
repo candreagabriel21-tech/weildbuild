@@ -7,10 +7,8 @@ import type { View } from "@/lib/store";
 import { moderateText, isTextClean } from "./shared";
 import { AvatarIcon3D } from "./AvatarComponents";
 import { useToast } from "@/hooks/use-toast";
-import { useLoadingAction } from "@/hooks/use-loading-action";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Coins, Palette, Users, Shield, Gamepad2, Pencil, User } from "lucide-react";
@@ -20,7 +18,6 @@ export function ProfileView({ user, onNavigate, onUpdate }: { user: UserData; on
   const [editingDesc, setEditingDesc] = useState(false);
   const [descText, setDescText] = useState(user.description || "");
   const { toast } = useToast();
-  const { loading: savingDesc, run: runSaveDesc } = useLoadingAction();
 
   useEffect(() => { setDescText(user.description || ""); }, [user.description]); // eslint-disable-line react-hooks/set-state-in-effect
 
@@ -52,7 +49,7 @@ export function ProfileView({ user, onNavigate, onUpdate }: { user: UserData; on
                   <Input value={descText} onChange={(e) => setDescText(e.target.value)} maxLength={200} className="bg-slate-800/50 border-slate-700 text-white text-sm h-8" />
                   <p className="text-[11px] text-slate-500 mt-0.5">{descText.length}/200</p>
                 </div>
-                <Button size="sm" className="bg-indigo-600" disabled={savingDesc} onClick={() => runSaveDesc(handleSaveDesc)}>{savingDesc ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}</Button>
+                <Button size="sm" className="bg-indigo-600" onClick={handleSaveDesc}>Save</Button>
                 <Button size="sm" variant="outline" className="border-slate-600 text-slate-300" onClick={() => { setEditingDesc(false); setDescText(user.description || ""); }}>Cancel</Button>
               </div>
             ) : (

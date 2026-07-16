@@ -11,10 +11,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ShoppingBag, Coins, Search, MoreVertical, Check, Loader2 } from "lucide-react";
+import { ShoppingBag, Coins, Search, MoreVertical, Check } from "lucide-react";
 import { formatPrice } from "./shared";
 import { WebuyDisplay } from "./WebuyDisplay";
-import { useLoadingMap } from "@/hooks/use-loading-action";
 
 // ==================== SHOP VIEW ====================
 export function ShopView({ user, items, onBuy }: { user: UserData; items: ItemData[]; onBuy: (itemId: string) => Promise<void> }) {
@@ -22,7 +21,6 @@ export function ShopView({ user, items, onBuy }: { user: UserData; items: ItemDa
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOption, setSortOption] = useState<string>("default");
   const [detailItem, setDetailItem] = useState<ItemData | null>(null);
-  const { isLoading: isBuying, run: runBuy } = useLoadingMap();
 
   let filtered = items.filter((i) => i.item_type === tab);
   if (searchQuery.trim()) {
@@ -83,8 +81,8 @@ export function ShopView({ user, items, onBuy }: { user: UserData; items: ItemDa
                         <Check className="w-3 h-3 mr-1" /> In Inventory
                       </Badge>
                     ) : (
-                      <Button size="sm" className="flex-1 bg-amber-600 hover:bg-amber-500 text-xs" onClick={() => runBuy(item.id, () => onBuy(item.id))} disabled={user.webuy < item.price || isBuying(item.id)}>
-                        {isBuying(item.id) ? <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Buying...</> : item.price === 0 ? "Free" : <><Coins className="w-3 h-3 mr-1" /> Buy: {formatPrice(item.price)} WeBuy</>}
+                      <Button size="sm" className="flex-1 bg-amber-600 hover:bg-amber-500 text-xs" onClick={() => onBuy(item.id)} disabled={user.webuy < item.price}>
+                        {item.price === 0 ? "Free" : <><Coins className="w-3 h-3 mr-1" /> Buy: {formatPrice(item.price)} WeBuy</>}
                       </Button>
                     )}
                     <button

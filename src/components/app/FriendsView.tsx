@@ -15,9 +15,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, UserPlus, UserMinus, Search, Eye, Send, Ban, X, Check,
-  Coins, Palette, Shield, User, Loader2
+  Coins, Palette, Shield, User
 } from "lucide-react";
-import { useLoadingMap } from "@/hooks/use-loading-action";
 
 // ==================== FRIENDS VIEW ====================
 export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket: Socket | null; onUpdate: (updates: Partial<UserData>) => Promise<void> }) {
@@ -33,7 +32,6 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
   const dmScrollRef = useRef<HTMLDivElement>(null);
   const { unblockUser } = useFriends();
   const { toast } = useToast();
-  const { isLoading: isActionLoading, run: runAction } = useLoadingMap();
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -167,8 +165,8 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
                 </div>
                 <div className="flex gap-1">
                   <Button size="sm" variant="ghost" className="text-slate-400 h-7 w-7 p-0" onClick={() => setViewingProfile(f)}><Eye className="w-3.5 h-3.5" /></Button>
-                  <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 h-7 w-7 p-0" disabled={isActionLoading(`rm-${f}`)} onClick={() => runAction(`rm-${f}`, () => handleRemoveFriend(f))}>{isActionLoading(`rm-${f}`) ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserMinus className="w-4 h-4" />}</Button>
-                  <Button size="sm" variant="ghost" className="text-slate-500 hover:text-red-400 h-7 w-7 p-0" disabled={isActionLoading(`block-${f}`)} onClick={() => runAction(`block-${f}`, () => handleBlockUser(f))}>{isActionLoading(`block-${f}`) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}</Button>
+                  <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 h-7 w-7 p-0" onClick={() => handleRemoveFriend(f)}><UserMinus className="w-4 h-4" /></Button>
+                  <Button size="sm" variant="ghost" className="text-slate-500 hover:text-red-400 h-7 w-7 p-0" onClick={() => handleBlockUser(f)}><Ban className="w-3.5 h-3.5" /></Button>
                 </div>
               </CardContent>
             </Card>
@@ -183,8 +181,8 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
               <CardContent className="p-3 flex items-center justify-between">
                 <div className="flex items-center gap-2"><UserPlus className="w-4 h-4 text-violet-400" /><span className="text-sm text-slate-200">{moderateText(f)}</span></div>
                 <div className="flex gap-1">
-                  <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 h-7 text-xs px-2" disabled={isActionLoading(`accept-${f}`)} onClick={() => runAction(`accept-${f}`, () => handleAcceptRequest(f))}>{isActionLoading(`accept-${f}`) ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}</Button>
-                  <Button size="sm" variant="ghost" className="text-red-400 h-7 text-xs px-2" disabled={isActionLoading(`decline-${f}`)} onClick={() => runAction(`decline-${f}`, () => handleDeclineRequest(f))}><X className="w-3 h-3" /></Button>
+                  <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 h-7 text-xs px-2" onClick={() => handleAcceptRequest(f)}><Check className="w-3 h-3" /></Button>
+                  <Button size="sm" variant="ghost" className="text-red-400 h-7 text-xs px-2" onClick={() => handleDeclineRequest(f)}><X className="w-3 h-3" /></Button>
                 </div>
               </CardContent>
             </Card>
@@ -215,10 +213,10 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
                     {isMe ? <Badge variant="outline" className="text-slate-500 text-[10px]">You</Badge> :
                      isFriend ? <Badge className="bg-indigo-600 text-[10px]">Friends</Badge> :
                      isBlocked ? <Badge className="bg-red-600 text-[10px]">Blocked</Badge> :
-                     isSent ? <Button size="sm" variant="ghost" className="text-red-400 h-7 text-xs" disabled={isActionLoading(`cancel-${u.username}`)} onClick={() => runAction(`cancel-${u.username}`, () => handleCancelRequest(u.username))}>{isActionLoading(`cancel-${u.username}`) ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <X className="w-3 h-3 mr-1" />} Cancel</Button> :
+                     isSent ? <Button size="sm" variant="ghost" className="text-red-400 h-7 text-xs" onClick={() => handleCancelRequest(u.username)}><X className="w-3 h-3 mr-1" /> Cancel</Button> :
                      <div className="flex gap-1">
-                       <Button size="sm" className="bg-violet-600 hover:bg-violet-500 h-7 text-xs" disabled={isActionLoading(`add-${u.username}`)} onClick={() => runAction(`add-${u.username}`, () => handleSendRequest(u.username))}>{isActionLoading(`add-${u.username}`) ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <UserPlus className="w-3 h-3 mr-1" />} Add</Button>
-                       <Button size="sm" variant="ghost" className="text-slate-500 h-7 w-7 p-0" disabled={isActionLoading(`block-${u.username}`)} onClick={() => runAction(`block-${u.username}`, () => handleBlockUser(u.username))}>{isActionLoading(`block-${u.username}`) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}</Button>
+                       <Button size="sm" className="bg-violet-600 hover:bg-violet-500 h-7 text-xs" onClick={() => handleSendRequest(u.username)}><UserPlus className="w-3 h-3 mr-1" /> Add</Button>
+                       <Button size="sm" variant="ghost" className="text-slate-500 h-7 w-7 p-0" onClick={() => handleBlockUser(u.username)}><Ban className="w-3.5 h-3.5" /></Button>
                      </div>}
                   </CardContent>
                 </Card>
@@ -286,7 +284,7 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
                   <span className="text-sm text-slate-200">{moderateText(b)}</span>
                 </div>
                 <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:text-white hover:bg-indigo-600 h-7 text-xs"
-                  disabled={isActionLoading(`unblock-${b}`)} onClick={() => runAction(`unblock-${b}`, () => handleUnblockUser(b))}>
+                  onClick={() => handleUnblockUser(b)}>
                   <Check className="w-3 h-3 mr-1" /> Unblock
                 </Button>
               </CardContent>
