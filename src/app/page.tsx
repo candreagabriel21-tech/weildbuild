@@ -85,19 +85,19 @@ export default function WeildBuildApp() {
     }
   }, [isLoggedIn]);
 
-  // ─── Real-time polling: refresh data periodically ───
-  // Polls for updates every 5 seconds so changes (description, avatar, games)
-  // show up for other users without needing to refresh the page.
+  // ─── Gentle refresh: only refresh games list every 30 seconds ───
+  // We DON'T refresh user data on a timer (it only changes when the user
+  // makes changes themselves, and those update locally already).
+  // We only refresh the GAMES list so new games appear without manual refresh.
   useEffect(() => {
     if (!isLoggedIn) return;
     const interval = setInterval(() => {
       if (!playingGame) {
-        refreshUser();
         fetchGames();
       }
-    }, 5000);
+    }, 30000); // 30 seconds — gentle, won't cause lag
     return () => clearInterval(interval);
-  }, [isLoggedIn, playingGame, refreshUser, fetchGames]);
+  }, [isLoggedIn, playingGame, fetchGames]);
 
   // Lock body scroll when playing a game, allow scroll otherwise
   useEffect(() => {
