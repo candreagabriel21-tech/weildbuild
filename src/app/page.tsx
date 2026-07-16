@@ -85,28 +85,19 @@ export default function WeildBuildApp() {
     }
   }, [isLoggedIn]);
 
-  // ─── Smart refresh: only refresh data WHEN the user navigates to a view ───
-  // No global polling. No background timers. Only fetch when the user
-  // actually opens a view — so nothing runs unless they're looking at it.
+  // ─── Real-time polling: refresh data periodically ───
+  // Polls for updates every 5 seconds so changes (description, avatar, games)
+  // show up for other users without needing to refresh the page.
   useEffect(() => {
     if (!isLoggedIn) return;
-    // When the user navigates to the lobby (home), refresh games
-    if (view === "lobby") {
-      fetchGames();
-    }
-    // When the user navigates to the shop, refresh items
-    if (view === "shop") {
-      fetchItems();
-    }
-    // When the user navigates to their profile, refresh their user data
-    if (view === "profile") {
-      refreshUser();
-    }
-    // When the user navigates to friends, refresh notifications (for friend requests)
-    if (view === "friends" && user) {
-      fetchNotifications(user.username);
-    }
-  }, [view, isLoggedIn, fetchGames, fetchItems, refreshUser, fetchNotifications, user]);
+    const interval = setInterval(() => {
+      if (!playingGame) {
+        refreshUser();
+        fetchGames();
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, playingGame, refreshUser, fetchGames]);
 
   // Lock body scroll when playing a game, allow scroll otherwise
   useEffect(() => {
@@ -124,9 +115,7 @@ export default function WeildBuildApp() {
 
   useEffect(() => {
     if (isLoggedIn && !socketInstanceRef.current) {
-      // Connect to the Socket.io server (use env var or same origin)
-      const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "";
-      const s = io(SOCKET_URL, { path: "/socket.io/", transports: ["websocket", "polling"], forceNew: true, reconnection: true });
+      const s = io({ path: "/socket.io/", transports: ["websocket", "polling"], forceNew: true, reconnection: true });
       socketInstanceRef.current = s;
       queueMicrotask(() => setSocket(s));
       if (user?.username) s.emit("user:online", { username: user.username });
