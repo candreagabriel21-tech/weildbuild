@@ -918,6 +918,16 @@ function SelectedTransformControls({ orbitControlsRef }: { orbitControlsRef: Rea
       // The face AWAY from the camera stays fixed while the face
       // closest to the camera moves. This is intuitive — the face
       // you're looking at grows toward you, the back stays put.
+
+      // BAIL OUT if drag-start data isn't available. The dragging-changed
+      // event populates dragStartRef.current; if it hasn't fired yet (race
+      // condition on the very first onObjectChange), `start` is undefined.
+      // Previously the else branch used the raw scale multiplier as the
+      // size (e.g. (2, 1, 1)) — that corrupted the part's dimensions and
+      // made the resize tool appear "broken". Skipping this frame is safe:
+      // the user hasn't moved the mouse yet, so there's nothing to update.
+      if (!start) return;
+
       const sx = targetObject.scale.x;
       const sy = targetObject.scale.y;
       const sz = targetObject.scale.z;
@@ -929,14 +939,12 @@ function SelectedTransformControls({ orbitControlsRef }: { orbitControlsRef: Rea
       let newSize: { x: number; y: number; z: number };
       if (isScaledType) {
         newSize = { x: Math.max(0.1, sx), y: Math.max(0.1, sy), z: Math.max(0.1, sz) };
-      } else if (start) {
+      } else {
         newSize = {
           x: Math.max(0.1, start.size.x * sx),
           y: Math.max(0.1, start.size.y * sy),
           z: Math.max(0.1, start.size.z * sz),
         };
-      } else {
-        newSize = { x: Math.max(0.1, sx), y: Math.max(0.1, sy), z: Math.max(0.1, sz) };
       }
       if (snapToGridRef.current) {
         const g = gridSizeRef.current;
@@ -944,29 +952,30 @@ function SelectedTransformControls({ orbitControlsRef }: { orbitControlsRef: Rea
         newSize.y = Math.max(0.1, Math.round(newSize.y / g) * g);
         newSize.z = Math.max(0.1, Math.round(newSize.z / g) * g);
       }
-      if (start) {
-        // Camera-aware anchored position:
-        // scaleAnchorSign is +1 if camera is on the positive side of that
-        // axis (anchor the negative face), -1 if on the negative side
-        // (anchor the positive face). Only shift position for axes that
-        // actually changed size.
-        const anchor = scaleAnchorSignRef.current;
-        const dx = newSize.x - start.size.x;
-        const dy = newSize.y - start.size.y;
-        const dz = newSize.z - start.size.z;
-        const newPosition = {
-          x: start.position.x + anchor.x * dx / 2,
-          y: start.position.y + anchor.y * dy / 2,
-          z: start.position.z + anchor.z * dz / 2,
-        };
-        updateObj(partId, { size: newSize, position: newPosition });
-        // Keep the gizmo mesh position in sync
-        targetObject.position.set(newPosition.x, newPosition.y, newPosition.z);
-      } else {
-        updateObj(partId, { size: newSize });
-      }
+
+      // Camera-aware anchored position:
+      // scaleAnchorSign is +1 if camera is on the positive side of that
+      // axis (anchor the negative face), -1 if on the negative side
+      // (anchor the positive face). Only shift position for axes that
+      // actually changed size.
+      const anchor = scaleAnchorSignRef.current;
+      const dx = newSize.x - start.size.x;
+      const dy = newSize.y - start.size.y;
+      const dz = newSize.z - start.size.z;
+      const newPosition = {
+        x: start.position.x + anchor.x * dx / 2,
+        y: start.position.y + anchor.y * dy / 2,
+        z: start.position.z + anchor.z * dz / 2,
+      };
+      updateObj(partId, { size: newSize, position: newPosition });
+      // Keep the gizmo mesh position in sync so the gizmo stays attached
+      // to the part's new center during the drag.
+      targetObject.position.set(newPosition.x, newPosition.y, newPosition.z);
+
       // Reset the visual scale — for Block/Wedge/Spawn this is (1,1,1),
       // for Sphere/Cylinder this is the new size (since they use unit geometry).
+      // TransformControls will re-apply the scale on the next pointerMove from
+      // its stored scaleStart, so resetting here doesn't break the drag.
       if (isScaledType) {
         targetObject.scale.set(newSize.x, newSize.y, newSize.z);
       } else {
@@ -1141,6 +1150,7 @@ function SelectedTransformControls({ orbitControlsRef }: { orbitControlsRef: Rea
       onObjectChange={handleChange}
       translationSnap={snapToGrid ? gridSize : null}
       rotationSnap={snapToGrid ? THREE.MathUtils.degToRad(15) : null}
+      scaleSnap={snapToGrid ? gridSize : null}
     />
   );
 }

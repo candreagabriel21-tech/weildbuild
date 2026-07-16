@@ -1819,6 +1819,19 @@ export const useStudioStore = create<StudioStore>((set, get) => ({
       isCharacterPart: true,
       characterPartType: partType,
       showInWorld: true, // visible in editor and during gameplay
+      // ─── Avatar Modification defaults ───
+      // Enable "Modify Color to Player's Avatar" by default for all body parts
+      // so the joining player's equipped skin/shirt/pants override the part's
+      // own color in play mode. Without this, the checkboxes are all unchecked
+      // and the player's avatar doesn't apply to the character rig.
+      // - head/arms → use avatar.skin
+      // - torso     → use avatar.shirt (by ID)
+      // - legs      → use avatar.left_leg / avatar.right_leg (by ID)
+      modifyColorToAvatar: true,
+      // Enable "Modify Face to Player's Avatar" by default for face parts so
+      // the joining player's equipped face (avatar.face, by ID) overrides the
+      // face part's own texture in play mode.
+      modifyFaceToAvatar: partType === 'face',
     });
 
     const parts: StudioPart[] = [
