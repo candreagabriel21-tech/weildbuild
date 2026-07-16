@@ -98,6 +98,12 @@ export function GamePlayer({ game, user, socket, onExit, onUpdateGame, isTestPla
       // Load the published game's full state into the store. This replaces
       // objects, joints, worldSettings, terrain, WeildCode rules, etc.
       restoreStudioState(game.studioState);
+      // CRITICAL: restoreStudioState also restores the SAVED avatar (the
+      // creator's equipped face/shirt/pants). For play mode, the live
+      // player's avatar must win — they should see THEIR face, THEIR shirt,
+      // THEIR pants, not the creator's. Re-apply user.avatar AFTER the
+      // restore so CharacterPartsRenderer reads the current player's IDs.
+      useStudioStore.getState().setAvatar(user.avatar);
     } else {
       // ─── Legacy game (saved before this fix) ───
       // Convert the downgraded primitives array back into studio parts.
@@ -106,6 +112,8 @@ export function GamePlayer({ game, user, socket, onExit, onUpdateGame, isTestPla
       savedEditorStateRef.current = snapshotStudioState();
       const studioObjects = gameDataToStudioState(game);
       useStudioStore.getState().loadProject({ objects: studioObjects });
+      // Re-apply user avatar here too — same reason as above.
+      useStudioStore.getState().setAvatar(user.avatar);
     }
 
     // Find spawn position from the (now-loaded) studio state

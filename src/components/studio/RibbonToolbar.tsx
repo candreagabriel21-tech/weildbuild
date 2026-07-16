@@ -76,6 +76,11 @@ import { MaterialPicker } from './MaterialPicker';
 import { ColorPicker } from './ColorPicker';
 import { useState, useCallback, useMemo, useEffect, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  restoreStudioState,
+  isValidStudioState,
+  type StudioProjectState,
+} from '@/lib/studio-project';
 
 function ToolButton({ icon, label, active, onClick, size = 'sm' }: {
   icon: React.ReactNode;
@@ -1991,6 +1996,28 @@ function LoadPublishedDialog({ onClose }: { onClose: () => void }) {
       const res = await fetch(`/api/games?id=${gameId}`);
       if (!res.ok) throw new Error('Game not found');
       const game = await res.json();
+
+      // ─── PRIMARY PATH: full studioState (1:1 restore) ───
+      // The studioState snapshot is the SINGLE source of truth — it captures
+      // every object (including character parts + baseplate), all joints,
+      // world settings, terrain, WeildCode rules, etc. Using restoreStudioState
+      // here means the editor reloads EXACTLY what was saved when the game
+      // was published, including the Player folder and the baseplate grid.
+      if (game.studioState && isValidStudioState(game.studioState as StudioProjectState)) {
+        restoreStudioState(game.studioState as StudioProjectState);
+        const objCount = (game.studioState as StudioProjectState).objects.length;
+        addConsoleMessage('success', `Loaded published game: ${game.name || gameId} (${objCount} objects, full studio state)`);
+        setLoadingGame(false);
+        onClose();
+        return;
+      }
+
+      // ─── LEGACY FALLBACK: primitives only (pre-studioState games) ───
+      // Old games saved before the studioState fix only have a downgraded
+      // `primitives` array. We can't recover character parts, baseplate flag,
+      // joints, terrain, or WeildCode rules from this — only basic geometry.
+      // We still explicitly skip 'player' shape_type primitives because
+      // the legacy converter cannot reconstruct the Player folder structure.
       if (game.primitives) {
         const studioObjects: any[] = [];
         for (const prim of game.primitives) {
@@ -2022,7 +2049,7 @@ function LoadPublishedDialog({ onClose }: { onClose: () => void }) {
           });
         }
         loadProject({ objects: studioObjects });
-        addConsoleMessage('success', `Loaded published game: ${game.name || gameId} (${studioObjects.length} objects)`);
+        addConsoleMessage('warn', `Loaded legacy game (no studio state): ${game.name || gameId}. Player folder, baseplate grid, joints, terrain, and WeildCode rules are not available. Re-publish this game to capture the full state.`);
       } else {
         addConsoleMessage('warn', 'Game has no objects');
       }
