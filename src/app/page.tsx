@@ -85,19 +85,28 @@ export default function WeildBuildApp() {
     }
   }, [isLoggedIn]);
 
-  // ─── Gentle refresh: only refresh games list every 30 seconds ───
-  // We DON'T refresh user data on a timer (it only changes when the user
-  // makes changes themselves, and those update locally already).
-  // We only refresh the GAMES list so new games appear without manual refresh.
+  // ─── Smart refresh: only refresh data WHEN the user navigates to a view ───
+  // No global polling. No background timers. Only fetch when the user
+  // actually opens a view — so nothing runs unless they're looking at it.
   useEffect(() => {
     if (!isLoggedIn) return;
-    const interval = setInterval(() => {
-      if (!playingGame) {
-        fetchGames();
-      }
-    }, 30000); // 30 seconds — gentle, won't cause lag
-    return () => clearInterval(interval);
-  }, [isLoggedIn, playingGame, fetchGames]);
+    // When the user navigates to the lobby (home), refresh games
+    if (view === "lobby") {
+      fetchGames();
+    }
+    // When the user navigates to the shop, refresh items
+    if (view === "shop") {
+      fetchItems();
+    }
+    // When the user navigates to their profile, refresh their user data
+    if (view === "profile") {
+      refreshUser();
+    }
+    // When the user navigates to friends, refresh notifications (for friend requests)
+    if (view === "friends" && user) {
+      fetchNotifications(user.username);
+    }
+  }, [view, isLoggedIn, fetchGames, fetchItems, refreshUser, fetchNotifications, user]);
 
   // Lock body scroll when playing a game, allow scroll otherwise
   useEffect(() => {
