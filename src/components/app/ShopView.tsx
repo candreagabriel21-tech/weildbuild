@@ -21,6 +21,21 @@ export function ShopView({ user, items, onBuy }: { user: UserData; items: ItemDa
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOption, setSortOption] = useState<string>("default");
   const [detailItem, setDetailItem] = useState<ItemData | null>(null);
+  // ─── Per-item purchase in-flight tracking ───
+  // Prevents spam-clicking the Buy button from creating duplicate purchases
+  // (which would double-charge WeBuy and grant the item multiple times).
+  // Keyed by item ID so each card's button is disabled independently.
+  const [buyingItems, setBuyingItems] = useState<Set<string>>(new Set());
+
+  const handleBuy = async (itemId: string) => {
+    if (buyingItems.has(itemId)) return;
+    setBuyingItems(prev => new Set(prev).add(itemId));
+    try {
+      await onBuy(itemId);
+    } finally {
+      setBuyingItems(prev => { const next = new Set(prev); next.delete(itemId); return next; });
+    }
+  };
 
   let filtered = items.filter((i) => i.item_type === tab);
   if (searchQuery.trim()) {
@@ -81,7 +96,7 @@ export function ShopView({ user, items, onBuy }: { user: UserData; items: ItemDa
                         <Check className="w-3 h-3 mr-1" /> In Inventory
                       </Badge>
                     ) : (
-                      <Button size="sm" className="flex-1 bg-amber-600 hover:bg-amber-500 text-xs" onClick={() => onBuy(item.id)} disabled={user.webuy < item.price}>
+                      <Button size="sm" className="flex-1 bg-amber-600 hover:bg-amber-500 text-xs" loading={buyingItems.has(item.id)} onClick={() => handleBuy(item.id)} disabled={user.webuy < item.price}>
                         {item.price === 0 ? "Free" : <><Coins className="w-3 h-3 mr-1" /> Buy: {formatPrice(item.price)} WeBuy</>}
                       </Button>
                     )}
@@ -104,9 +119,10 @@ export function ShopView({ user, items, onBuy }: { user: UserData; items: ItemDa
         <ItemDetailPopup
           item={detailItem}
           onClose={() => setDetailItem(null)}
-          onBuy={onBuy}
+          onBuy={handleBuy}
           owned={user.items_owned.includes(detailItem.id)}
           canAfford={user.webuy >= detailItem.price}
+          buying={buyingItems.has(detailItem.id)}
         />
       )}
     </div>

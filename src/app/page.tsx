@@ -101,13 +101,37 @@ export default function WeildBuildApp() {
 
   useEffect(() => {
     if (isLoggedIn && !socketInstanceRef.current) {
-      const s = io({ path: "/socket.io/", transports: ["websocket", "polling"], forceNew: true, reconnection: true });
+      // ─── Connect to the Render-hosted socket.io server ───
+      // The URL is set via NEXT_PUBLIC_SOCKET_URL env var on Vercel.
+      // Falls back to localhost:3003 for local dev (where you'd run
+      // the socket-server package separately).
+      //
+      // Previously this tried to connect to the SAME origin as the Next.js
+      // app (/socket.io/) — but Vercel is serverless and can't host a
+      // long-lived socket.io server. The connection silently failed and
+      // retried forever, eating CPU and making the app feel laggy.
+      const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3003";
+      // Skip connection entirely if the URL is empty or clearly broken —
+      // prevents infinite reconnect loops when misconfigured.
+      if (!socketUrl || socketUrl === "https://placeholder.supabase.co") return;
+      const s = io(socketUrl, {
+        transports: ["websocket", "polling"],
+        forceNew: true,
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 10000,
+      });
       socketInstanceRef.current = s;
       queueMicrotask(() => setSocket(s));
       if (user?.username) s.emit("user:online", { username: user.username });
       // Re-emit user:online on reconnect
       s.on("connect", () => {
         if (user?.username) s.emit("user:online", { username: user.username });
+      });
+      // Log connection errors so misconfigurations are visible in the console
+      s.on("connect_error", (err) => {
+        console.warn("[socket.io] connection error:", err.message);
       });
     }
     return () => {

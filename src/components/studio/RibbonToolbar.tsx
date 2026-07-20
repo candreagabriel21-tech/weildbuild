@@ -1770,19 +1770,43 @@ function PublishDialog({ onClose }: { onClose: () => void }) {
   const [publishing, setPublishing] = useState(false);
 
   const handlePublish = async () => {
+    if (publishing) return;
     setPublishing(true);
+    // Use the WeildCreateStudio's onCreateGame callback via a custom event.
+    // The studio's handlePublishEvent is async (it calls onCreateGame which
+    // is a fetch). We listen for 'weildcreate-publish-done' to know when it
+    // finished — this keeps the publishing spinner visible and the button
+    // disabled for the entire duration of the network call, preventing
+    // spam-clicks from creating duplicate games.
+    const doneHandler = () => {
+      setPublishing(false);
+      window.removeEventListener('weildcreate-publish-done', doneHandler);
+      onClose();
+    };
+    window.addEventListener('weildcreate-publish-done', doneHandler);
+
     try {
-      // Use the WeildCreateStudio's onCreateGame callback via a custom event
       const event = new CustomEvent('weildcreate-publish', {
         detail: { name, description, isPublic },
       });
       window.dispatchEvent(event);
       addConsoleMessage('info', `Publishing "${name}"...`);
+      // Safety net: if the studio never emits 'publish-done' (e.g. component
+      // unmounted mid-publish), clear the flag after 30 seconds so the user
+      // isn't stuck with a forever-spinning button.
+      setTimeout(() => {
+        if (publishing) {
+          setPublishing(false);
+          window.removeEventListener('weildcreate-publish-done', doneHandler);
+          addConsoleMessage('warn', 'Publish timed out — please try again');
+        }
+      }, 30000);
     } catch (e: any) {
       addConsoleMessage('error', `Publish failed: ${e.message}`);
+      setPublishing(false);
+      window.removeEventListener('weildcreate-publish-done', doneHandler);
+      onClose();
     }
-    setPublishing(false);
-    onClose();
   };
 
   return (
@@ -1970,7 +1994,10 @@ function LoadPublishedDialog({ onClose }: { onClose: () => void }) {
   const [games, setGames] = useState<any[]>([]);
   const [loadingGames, setLoadingGames] = useState(true);
   const [manualId, setManualId] = useState('');
-  const [loadingGame, setLoadingGame] = useState(false);
+  // Track which game ID is currently being loaded (string) or null.
+  // Using the game ID instead of a boolean lets us disable ONLY the row
+  // being loaded while keeping other rows clickable.
+  const [loadingGame, setLoadingGame] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchGames() {
@@ -1991,7 +2018,8 @@ function LoadPublishedDialog({ onClose }: { onClose: () => void }) {
   }, [user]);
 
   const handleLoadGame = async (gameId: string) => {
-    setLoadingGame(true);
+    if (loadingGame) return;  // already loading — prevent spam-clicks
+    setLoadingGame(gameId);
     try {
       const res = await fetch(`/api/games?id=${gameId}`);
       if (!res.ok) throw new Error('Game not found');
@@ -2007,7 +2035,7 @@ function LoadPublishedDialog({ onClose }: { onClose: () => void }) {
         restoreStudioState(game.studioState as StudioProjectState);
         const objCount = (game.studioState as StudioProjectState).objects.length;
         addConsoleMessage('success', `Loaded published game: ${game.name || gameId} (${objCount} objects, full studio state)`);
-        setLoadingGame(false);
+        setLoadingGame(null);
         onClose();
         return;
       }
@@ -2056,7 +2084,7 @@ function LoadPublishedDialog({ onClose }: { onClose: () => void }) {
     } catch (e: any) {
       addConsoleMessage('error', `Failed to load game: ${e.message}`);
     }
-    setLoadingGame(false);
+    setLoadingGame(null);
     onClose();
   };
 
@@ -2079,7 +2107,7 @@ function LoadPublishedDialog({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             games.map((game: any) => (
-              <div key={game.id} className="bg-white/5 border border-white/10 rounded-lg p-3 hover:bg-white/10 transition-colors cursor-pointer" onClick={() => handleLoadGame(game.id)}>
+              <div key={game.id} className={`bg-white/5 border border-white/10 rounded-lg p-3 ${loadingGame === game.id ? 'opacity-60' : 'hover:bg-white/10 cursor-pointer'} transition-colors`} onClick={() => loadingGame !== game.id && handleLoadGame(game.id)}>
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-white/90 truncate">{game.name || 'Untitled'}</p>
@@ -2088,10 +2116,10 @@ function LoadPublishedDialog({ onClose }: { onClose: () => void }) {
                   <div className="flex items-center gap-2 ml-2">
                     <span className="text-[9px] text-white/30">{game.plays || 0} plays</span>
                     <button
-                      disabled={loadingGame}
+                      disabled={!!loadingGame}
                       className="text-[10px] px-2 py-1 bg-indigo-500/20 hover:bg-indigo-500/30 rounded text-indigo-400 font-semibold border border-indigo-500/20 disabled:opacity-50"
                     >
-                      {loadingGame ? '...' : 'Load'}
+                      {loadingGame === game.id ? 'Loading...' : 'Load'}
                     </button>
                   </div>
                 </div>
@@ -2105,8 +2133,8 @@ function LoadPublishedDialog({ onClose }: { onClose: () => void }) {
           <span className="text-[9px] text-white/40">Or enter a Game ID manually:</span>
           <div className="flex gap-2">
             <input value={manualId} onChange={(e) => setManualId(e.target.value)} placeholder="Game ID..." className="flex-1 h-7 text-xs bg-white/5 border border-white/10 text-white px-2 rounded" />
-            <button onClick={() => handleLoadGame(manualId)} disabled={loadingGame || !manualId.trim()} className="text-[10px] px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 rounded text-indigo-400 font-semibold border border-indigo-500/20 disabled:opacity-50">
-              {loadingGame ? '...' : 'Load'}
+            <button onClick={() => handleLoadGame(manualId)} disabled={!!loadingGame || !manualId.trim()} className="text-[10px] px-3 py-1.5 bg-indigo-500/20 hover:bg-indigo-500/30 rounded text-indigo-400 font-semibold border border-indigo-500/20 disabled:opacity-50">
+              {loadingGame ? 'Loading...' : 'Load'}
             </button>
           </div>
         </div>

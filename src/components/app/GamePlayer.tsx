@@ -164,12 +164,25 @@ export function GamePlayer({ game, user, socket, onExit, onUpdateGame, isTestPla
   // Track our own sent messages to dedup server echoes
   const sentMessageIds = useRef<Set<string>>(new Set());
 
+  // ─── Per-target pending action tracking ───
+  // Prevents spam-clicking in-game social buttons (Add Friend, Cancel,
+  // Remove, Block) from creating duplicate friend requests or corrupting
+  // both users' friend lists. Keyed by `${action}:${targetUsername}` so
+  // different actions on the same target are independent.
+  const [pendingSocial, setPendingSocial] = useState<Set<string>>(new Set());
+  const setSocialPending = (key: string) => setPendingSocial(prev => new Set(prev).add(key));
+  const clearSocialPending = (key: string) => setPendingSocial(prev => { const next = new Set(prev); next.delete(key); return next; });
+  const isSocialPending = (key: string) => pendingSocial.has(key);
+
   // Auto-scroll chat to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
   const handleSendFriendRequest = async (to: string) => {
+    const key = `request:${to}`;
+    if (isSocialPending(key)) return;
+    setSocialPending(key);
     try {
       const res = await fetch("/api/friends", {
         method: "POST",
@@ -181,31 +194,40 @@ export function GamePlayer({ game, user, socket, onExit, onUpdateGame, isTestPla
         toast({ title: "Friend request sent to " + to + "!" });
         if (socket) socket.emit("friend:request", { from: user.username, to });
       }
-    } catch {}
+    } catch {} finally { clearSocialPending(key); }
   };
 
   const handleInGameCancelRequest = async (to: string) => {
+    const key = `cancel:${to}`;
+    if (isSocialPending(key)) return;
+    setSocialPending(key);
     try {
       await fetch("/api/friends", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "cancel", from: user.username, to }) });
       toast({ title: "Friend request cancelled" });
-    } catch {}
+    } catch {} finally { clearSocialPending(key); }
   };
 
   const handleInGameRemoveFriend = async (friend: string) => {
+    const key = `remove:${friend}`;
+    if (isSocialPending(key)) return;
+    setSocialPending(key);
     try {
       await fetch("/api/friends", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "remove", from: user.username, friend }) });
       toast({ title: "Friend removed" });
-    } catch {}
+    } catch {} finally { clearSocialPending(key); }
   };
 
   const handleInGameBlockUser = async (target: string) => {
+    const key = `block:${target}`;
+    if (isSocialPending(key)) return;
+    setSocialPending(key);
     try {
       await fetch("/api/friends", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "block", from: user.username, target }) });
       toast({ title: "User blocked" });
-    } catch {}
+    } catch {} finally { clearSocialPending(key); }
   };
 
   const showChatBubble = useCallback((socketId: string, message: string) => {
@@ -682,7 +704,7 @@ export function GamePlayer({ game, user, socket, onExit, onUpdateGame, isTestPla
                       </button>
                     )}
                     {!isMe && !isFriend && (
-                      <button onClick={() => handleSendFriendRequest(p)} className="text-indigo-400 hover:text-indigo-300" title="Add friend">
+                      <button onClick={() => handleSendFriendRequest(p)} disabled={isSocialPending(`request:${p}`)} className="text-indigo-400 hover:text-indigo-300 disabled:opacity-40 disabled:cursor-not-allowed" title={isSocialPending(`request:${p}`) ? "Sending..." : "Add friend"}>
                         <UserPlus className="w-3 h-3" />
                       </button>
                     )}
@@ -741,6 +763,7 @@ export function GamePlayer({ game, user, socket, onExit, onUpdateGame, isTestPla
             onRemoveFriend={handleInGameRemoveFriend}
             onBlockUser={handleInGameBlockUser}
             sentRequests={new Set()}
+            pendingActions={pendingSocial}
           />
         )}
       </AnimatePresence>

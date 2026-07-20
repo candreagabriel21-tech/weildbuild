@@ -27,6 +27,7 @@ export function SettingsView({ user, onUpdate, onLogout }: { user: UserData; onU
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [endOtherSessions, setEndOtherSessions] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => { setProfileVisible(user.profile_visible !== false); }, [user.profile_visible]); // eslint-disable-line react-hooks/set-state-in-effect
   useEffect(() => { setNotifyFriends(user.notify_friends !== false); }, [user.notify_friends]); // eslint-disable-line react-hooks/set-state-in-effect
@@ -57,10 +58,12 @@ export function SettingsView({ user, onUpdate, onLogout }: { user: UserData; onU
   };
 
   const handleChangePassword = async () => {
+    if (changingPassword) return;
     setPasswordError("");
     setPasswordSuccess("");
     if (newPassword.length < 6) { setPasswordError("New password must be at least 6 characters"); return; }
     if (newPassword !== confirmPassword) { setPasswordError("Passwords don't match"); return; }
+    setChangingPassword(true);
     try {
       const data = await apiFetch("/auth", {
         method: "POST",
@@ -87,6 +90,8 @@ export function SettingsView({ user, onUpdate, onLogout }: { user: UserData; onU
       }
     } catch (e: any) {
       setPasswordError(e.message || "Network error");
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -195,7 +200,7 @@ export function SettingsView({ user, onUpdate, onLogout }: { user: UserData; onU
           </label>
           {passwordError && <p className="text-red-400 text-xs">{passwordError}</p>}
           {passwordSuccess && <p className="text-green-400 text-xs">{passwordSuccess}</p>}
-          <Button onClick={handleChangePassword} disabled={!oldPassword || !newPassword || !confirmPassword} className="w-full bg-indigo-600 hover:bg-indigo-500">Change Password</Button>
+          <Button onClick={handleChangePassword} loading={changingPassword} disabled={!oldPassword || !newPassword || !confirmPassword} className="w-full bg-indigo-600 hover:bg-indigo-500">{changingPassword ? "Changing..." : "Change Password"}</Button>
         </CardContent>
       </Card>
 

@@ -19,12 +19,16 @@ export function ItemDetailPopup({
   onBuy,
   owned,
   canAfford,
+  buying = false,
 }: {
   item: ItemData;
   onClose: () => void;
   onBuy?: (itemId: string) => Promise<void>;
   owned: boolean;
   canAfford: boolean;
+  /** When true, the Buy button renders a spinner and is disabled. Set by the
+   *  parent (ShopView) which tracks per-item purchase in-flight state. */
+  buying?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -165,6 +169,7 @@ export function ItemDetailPopup({
               {onBuy && !owned && (
                 <Button
                   className="w-full bg-amber-600 hover:bg-amber-500 text-sm"
+                  loading={buying}
                   onClick={() => onBuy(item.id)}
                   disabled={!canAfford}
                 >

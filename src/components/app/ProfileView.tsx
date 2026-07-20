@@ -17,18 +17,23 @@ import { Coins, Palette, Users, Shield, Gamepad2, Pencil, User } from "lucide-re
 export function ProfileView({ user, onNavigate, onUpdate }: { user: UserData; onNavigate: (v: View) => void; onUpdate: (updates: Partial<UserData>) => Promise<void> }) {
   const [editingDesc, setEditingDesc] = useState(false);
   const [descText, setDescText] = useState(user.description || "");
+  const [savingDesc, setSavingDesc] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => { setDescText(user.description || ""); }, [user.description]); // eslint-disable-line react-hooks/set-state-in-effect
 
   const handleSaveDesc = async () => {
+    if (savingDesc) return;
     if (!isTextClean(descText)) { toast({ title: "Inappropriate content", variant: "destructive" }); return; }
+    setSavingDesc(true);
     try {
       await onUpdate({ description: moderateText(descText) });
       setEditingDesc(false);
       toast({ title: "Description updated!" });
     } catch {
       toast({ title: "Failed to update description", variant: "destructive" });
+    } finally {
+      setSavingDesc(false);
     }
   };
 
@@ -49,7 +54,7 @@ export function ProfileView({ user, onNavigate, onUpdate }: { user: UserData; on
                   <Input value={descText} onChange={(e) => setDescText(e.target.value)} maxLength={200} className="bg-slate-800/50 border-slate-700 text-white text-sm h-8" />
                   <p className="text-[11px] text-slate-500 mt-0.5">{descText.length}/200</p>
                 </div>
-                <Button size="sm" className="bg-indigo-600" onClick={handleSaveDesc}>Save</Button>
+                <Button size="sm" className="bg-indigo-600" loading={savingDesc} onClick={handleSaveDesc}>{savingDesc ? "Saving..." : "Save"}</Button>
                 <Button size="sm" variant="outline" className="border-slate-600 text-slate-300" onClick={() => { setEditingDesc(false); setDescText(user.description || ""); }}>Cancel</Button>
               </div>
             ) : (

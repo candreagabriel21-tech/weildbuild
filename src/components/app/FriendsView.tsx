@@ -33,6 +33,18 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
   const { unblockUser } = useFriends();
   const { toast } = useToast();
 
+  // ─── Per-target pending action tracking ───
+  // Tracks which target usernames have an in-flight async action. Buttons
+  // for that target render a spinner + are disabled until the action
+  // resolves, preventing spam-clicks from creating duplicate friend
+  // requests / double-charges / corrupting both users' friend lists.
+  // Key format: `${actionType}:${targetUsername}` (e.g. "request:alice",
+  // "block:bob") so different actions on the same target are independent.
+  const [pendingActions, setPendingActions] = useState<Set<string>>(new Set());
+  const setPending = (key: string) => setPendingActions(prev => new Set(prev).add(key));
+  const clearPending = (key: string) => setPendingActions(prev => { const next = new Set(prev); next.delete(key); return next; });
+  const isPending = (key: string) => pendingActions.has(key);
+
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     setSearchLoading(true);
@@ -40,10 +52,13 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
       const res = await fetch(`/api/friends?search=${encodeURIComponent(searchQuery.trim())}`);
       const data = await res.json();
       setSearchResults(Array.isArray(data) ? data : []);
-    } catch {} setSearchLoading(false);
+    } catch {} finally { setSearchLoading(false); }
   };
 
   const handleSendRequest = async (to: string) => {
+    const key = `request:${to}`;
+    if (isPending(key)) return;
+    setPending(key);
     try {
       const res = await fetch("/api/friends", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "request", from: user.username, to }) });
@@ -58,10 +73,13 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
           toast({ title: "Friend request sent!" });
         }
       }
-    } catch {}
+    } catch {} finally { clearPending(key); }
   };
 
   const handleCancelRequest = async (to: string) => {
+    const key = `cancel:${to}`;
+    if (isPending(key)) return;
+    setPending(key);
     try {
       const res = await fetch("/api/friends", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "cancel", from: user.username, to }) });
@@ -70,51 +88,66 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
         setSentRequests(prev => { const next = new Set(prev); next.delete(to); return next; });
         toast({ title: "Friend request cancelled" });
       }
-    } catch {}
+    } catch {} finally { clearPending(key); }
   };
 
   const handleAcceptRequest = async (friend: string) => {
+    const key = `accept:${friend}`;
+    if (isPending(key)) return;
+    setPending(key);
     try {
       const res = await fetch("/api/friends", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "accept", username: user.username, friend }) });
       const data = await res.json();
       if (data.success && data.user) { await onUpdate(data.user); if (socket) socket.emit("friend:accepted", { username: user.username, friend }); }
-    } catch {}
+    } catch {} finally { clearPending(key); }
   };
 
   const handleDeclineRequest = async (friend: string) => {
+    const key = `decline:${friend}`;
+    if (isPending(key)) return;
+    setPending(key);
     try {
       const res = await fetch("/api/friends", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "decline", username: user.username, friend }) });
       const data = await res.json();
       if (data.success && data.user) await onUpdate(data.user);
-    } catch {}
+    } catch {} finally { clearPending(key); }
   };
 
   const handleRemoveFriend = async (friend: string) => {
+    const key = `remove:${friend}`;
+    if (isPending(key)) return;
+    setPending(key);
     try {
       const res = await fetch("/api/friends", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "remove", username: user.username, friend }) });
       const data = await res.json();
       if (data.success && data.user) await onUpdate(data.user);
-    } catch {}
+    } catch {} finally { clearPending(key); }
   };
 
   const handleBlockUser = async (target: string) => {
+    const key = `block:${target}`;
+    if (isPending(key)) return;
+    setPending(key);
     try {
       const res = await fetch("/api/friends", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "block", username: user.username, target }) });
       const data = await res.json();
       if (data.success) { toast({ title: `Blocked ${target}` }); await onUpdate(data.user || {}); }
-    } catch {}
+    } catch {} finally { clearPending(key); }
   };
 
   const handleUnblockUser = async (target: string) => {
+    const key = `unblock:${target}`;
+    if (isPending(key)) return;
+    setPending(key);
     try {
       const result = await unblockUser(user.username, target);
       if (result.success) { toast({ title: `Unblocked ${target}` }); await onUpdate({}); }
       else toast({ title: "Failed to unblock", variant: "destructive" });
-    } catch {}
+    } catch {} finally { clearPending(key); }
   };
 
   const loadDMs = async (friend: string) => {
@@ -165,8 +198,8 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
                 </div>
                 <div className="flex gap-1">
                   <Button size="sm" variant="ghost" className="text-slate-400 h-7 w-7 p-0" onClick={() => setViewingProfile(f)}><Eye className="w-3.5 h-3.5" /></Button>
-                  <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 h-7 w-7 p-0" onClick={() => handleRemoveFriend(f)}><UserMinus className="w-4 h-4" /></Button>
-                  <Button size="sm" variant="ghost" className="text-slate-500 hover:text-red-400 h-7 w-7 p-0" onClick={() => handleBlockUser(f)}><Ban className="w-3.5 h-3.5" /></Button>
+                  <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 h-7 w-7 p-0" loading={isPending(`remove:${f}`)} onClick={() => handleRemoveFriend(f)}><UserMinus className="w-4 h-4" /></Button>
+                  <Button size="sm" variant="ghost" className="text-slate-500 hover:text-red-400 h-7 w-7 p-0" loading={isPending(`block:${f}`)} onClick={() => handleBlockUser(f)}><Ban className="w-3.5 h-3.5" /></Button>
                 </div>
               </CardContent>
             </Card>
@@ -181,8 +214,8 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
               <CardContent className="p-3 flex items-center justify-between">
                 <div className="flex items-center gap-2"><UserPlus className="w-4 h-4 text-violet-400" /><span className="text-sm text-slate-200">{moderateText(f)}</span></div>
                 <div className="flex gap-1">
-                  <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 h-7 text-xs px-2" onClick={() => handleAcceptRequest(f)}><Check className="w-3 h-3" /></Button>
-                  <Button size="sm" variant="ghost" className="text-red-400 h-7 text-xs px-2" onClick={() => handleDeclineRequest(f)}><X className="w-3 h-3" /></Button>
+                  <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 h-7 text-xs px-2" loading={isPending(`accept:${f}`)} onClick={() => handleAcceptRequest(f)}><Check className="w-3 h-3" /></Button>
+                  <Button size="sm" variant="ghost" className="text-red-400 h-7 text-xs px-2" loading={isPending(`decline:${f}`)} onClick={() => handleDeclineRequest(f)}><X className="w-3 h-3" /></Button>
                 </div>
               </CardContent>
             </Card>
@@ -213,10 +246,10 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
                     {isMe ? <Badge variant="outline" className="text-slate-500 text-[10px]">You</Badge> :
                      isFriend ? <Badge className="bg-indigo-600 text-[10px]">Friends</Badge> :
                      isBlocked ? <Badge className="bg-red-600 text-[10px]">Blocked</Badge> :
-                     isSent ? <Button size="sm" variant="ghost" className="text-red-400 h-7 text-xs" onClick={() => handleCancelRequest(u.username)}><X className="w-3 h-3 mr-1" /> Cancel</Button> :
+                     isSent ? <Button size="sm" variant="ghost" className="text-red-400 h-7 text-xs" loading={isPending(`cancel:${u.username}`)} onClick={() => handleCancelRequest(u.username)}><X className="w-3 h-3 mr-1" /> Cancel</Button> :
                      <div className="flex gap-1">
-                       <Button size="sm" className="bg-violet-600 hover:bg-violet-500 h-7 text-xs" onClick={() => handleSendRequest(u.username)}><UserPlus className="w-3 h-3 mr-1" /> Add</Button>
-                       <Button size="sm" variant="ghost" className="text-slate-500 h-7 w-7 p-0" onClick={() => handleBlockUser(u.username)}><Ban className="w-3.5 h-3.5" /></Button>
+                       <Button size="sm" className="bg-violet-600 hover:bg-violet-500 h-7 text-xs" loading={isPending(`request:${u.username}`)} onClick={() => handleSendRequest(u.username)}><UserPlus className="w-3 h-3 mr-1" /> Add</Button>
+                       <Button size="sm" variant="ghost" className="text-slate-500 h-7 w-7 p-0" loading={isPending(`block:${u.username}`)} onClick={() => handleBlockUser(u.username)}><Ban className="w-3.5 h-3.5" /></Button>
                      </div>}
                   </CardContent>
                 </Card>
@@ -284,7 +317,7 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
                   <span className="text-sm text-slate-200">{moderateText(b)}</span>
                 </div>
                 <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:text-white hover:bg-indigo-600 h-7 text-xs"
-                  onClick={() => handleUnblockUser(b)}>
+                  loading={isPending(`unblock:${b}`)} onClick={() => handleUnblockUser(b)}>
                   <Check className="w-3 h-3 mr-1" /> Unblock
                 </Button>
               </CardContent>
@@ -305,6 +338,7 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
             onRemoveFriend={handleRemoveFriend}
             onBlockUser={handleBlockUser}
             sentRequests={sentRequests}
+            pendingActions={pendingActions}
           />
         )}
       </AnimatePresence>
@@ -313,7 +347,7 @@ export function FriendsView({ user, socket, onUpdate }: { user: UserData; socket
 }
 
 // ==================== VIEW PROFILE MODAL ====================
-export function ViewProfileModal({ targetUsername, currentUser, onClose, onSendRequest, onCancelRequest, onRemoveFriend, onBlockUser, sentRequests }: {
+export function ViewProfileModal({ targetUsername, currentUser, onClose, onSendRequest, onCancelRequest, onRemoveFriend, onBlockUser, sentRequests, pendingActions }: {
   targetUsername: string;
   currentUser: UserData;
   onClose: () => void;
@@ -322,6 +356,7 @@ export function ViewProfileModal({ targetUsername, currentUser, onClose, onSendR
   onRemoveFriend: (friend: string) => void;
   onBlockUser: (target: string) => void;
   sentRequests: Set<string>;
+  pendingActions: Set<string>;
 }) {
   const [targetData, setTargetData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -471,22 +506,22 @@ export function ViewProfileModal({ targetUsername, currentUser, onClose, onSendR
                   ) : (
                     <>
                       {isFriend && (
-                        <Button size="sm" variant="outline" className="border-violet-500/30 text-violet-400 text-xs hover:bg-violet-500/10" onClick={() => { onRemoveFriend(targetUsername); onClose(); }}>
+                        <Button size="sm" variant="outline" className="border-violet-500/30 text-violet-400 text-xs hover:bg-violet-500/10" loading={pendingActions.has(`remove:${targetUsername}`)} onClick={() => { onRemoveFriend(targetUsername); onClose(); }}>
                           <UserMinus className="w-3 h-3 mr-1" /> Remove Friend
                         </Button>
                       )}
                       {!isFriend && isSent && (
-                        <Button size="sm" variant="outline" className="border-red-500/30 text-red-400 text-xs hover:bg-red-500/10" onClick={() => { onCancelRequest(targetUsername); onClose(); }}>
+                        <Button size="sm" variant="outline" className="border-red-500/30 text-red-400 text-xs hover:bg-red-500/10" loading={pendingActions.has(`cancel:${targetUsername}`)} onClick={() => { onCancelRequest(targetUsername); onClose(); }}>
                           <X className="w-3 h-3 mr-1" /> Cancel Request
                         </Button>
                       )}
                       {!isFriend && !isSent && !isBlocked && (
-                        <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-xs" onClick={() => { onSendRequest(targetUsername); onClose(); }}>
+                        <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500 text-xs" loading={pendingActions.has(`request:${targetUsername}`)} onClick={() => { onSendRequest(targetUsername); onClose(); }}>
                           <UserPlus className="w-3 h-3 mr-1" /> Add Friend
                         </Button>
                       )}
                       {!isBlocked && (
-                        <Button size="sm" variant="ghost" className="text-red-400 text-xs hover:bg-red-500/10" onClick={() => { onBlockUser(targetUsername); onClose(); }}>
+                        <Button size="sm" variant="ghost" className="text-red-400 text-xs hover:bg-red-500/10" loading={pendingActions.has(`block:${targetUsername}`)} onClick={() => { onBlockUser(targetUsername); onClose(); }}>
                           <Ban className="w-3 h-3 mr-1" /> Block
                         </Button>
                       )}

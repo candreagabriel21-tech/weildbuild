@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { StudioLayout } from '@/components/studio/StudioLayout';
 import { useStudioStore, StudioPart, StudioObject, isPart, PartType, MaterialType } from '@/lib/studio-store';
 import type { UserData, GameData, PrimitiveData } from '@/lib/store';
@@ -330,21 +330,33 @@ export default function WeildCreateStudio({
     }
   }, [savedState]);
 
+  // ─── Save / publish in-flight tracking ───
+  // Prevents spam-clicking the floating Save button (or Ctrl+S) from
+  // creating duplicate published games. Both the keyboard shortcut and
+  // the button check this flag.
+  const [saving, setSaving] = useState(false);
+
   const handleSave = useCallback(async () => {
-    const state = useStudioStore.getState();
-    const gameData = studioStateToGameData(
-      state.objects,
-      'Untitled Game',
-      'Created in WeildCreate',
-      user.username,
-    );
-    const result = await onCreateGame(gameData);
-    if (result) {
-      useStudioStore.getState().addConsoleMessage('success', `Game saved: ${result.name} (${result.id})`);
-    } else {
-      useStudioStore.getState().addConsoleMessage('error', 'Failed to save game');
+    if (saving) return;
+    setSaving(true);
+    try {
+      const state = useStudioStore.getState();
+      const gameData = studioStateToGameData(
+        state.objects,
+        'Untitled Game',
+        'Created in WeildCreate',
+        user.username,
+      );
+      const result = await onCreateGame(gameData);
+      if (result) {
+        useStudioStore.getState().addConsoleMessage('success', `Game saved: ${result.name} (${result.id})`);
+      } else {
+        useStudioStore.getState().addConsoleMessage('error', 'Failed to save game');
+      }
+    } finally {
+      setSaving(false);
     }
-  }, [onCreateGame, user.username]);
+  }, [onCreateGame, user.username, saving]);
 
   const handleTestPlay = useCallback(() => {
     const state = useStudioStore.getState();
@@ -377,6 +389,14 @@ export default function WeildCreateStudio({
     }
   }, [onTestPlay, user.username]);
 
+  // ─── Publish in-flight tracking ───
+  // Prevents spam-clicking Publish from creating duplicate games. The
+  // PublishDialog dispatches a 'weildcreate-publish' custom event which
+  // handlePublishEvent picks up. We gate on this flag and also broadcast
+  // a 'weildcreate-publish-done' event back so the dialog can keep its
+  // publishing spinner visible until the network call resolves.
+  const [publishing, setPublishing] = useState(false);
+
   // Listen for custom events from RibbonToolbar
   useEffect(() => {
     const handleTestPlayEvent = () => {
@@ -384,6 +404,8 @@ export default function WeildCreateStudio({
     };
 
     const handlePublishEvent = async (e: Event) => {
+      if (publishing) return;
+      setPublishing(true);
       const customEvent = e as CustomEvent;
       const { name, description, isPublic } = customEvent.detail || {};
       const state = useStudioStore.getState();
@@ -396,11 +418,17 @@ export default function WeildCreateStudio({
       if (!isPublic) {
         (gameData as any).public = false;
       }
-      const result = await onCreateGame(gameData);
-      if (result) {
-        state.addConsoleMessage('success', `Published: ${result.name} (${result.id})`);
-      } else {
-        state.addConsoleMessage('error', 'Failed to publish game');
+      try {
+        const result = await onCreateGame(gameData);
+        if (result) {
+          state.addConsoleMessage('success', `Published: ${result.name} (${result.id})`);
+        } else {
+          state.addConsoleMessage('error', 'Failed to publish game');
+        }
+      } finally {
+        setPublishing(false);
+        // Notify the PublishDialog that the publish finished (success or fail)
+        window.dispatchEvent(new CustomEvent('weildcreate-publish-done'));
       }
     };
 
@@ -411,7 +439,7 @@ export default function WeildCreateStudio({
       window.removeEventListener('weildcreate-testplay', handleTestPlayEvent);
       window.removeEventListener('weildcreate-publish', handlePublishEvent);
     };
-  }, [handleTestPlay, onCreateGame, user.username]);
+  }, [handleTestPlay, onCreateGame, user.username, publishing]);
 
   // Listen for keyboard shortcuts
   useEffect(() => {
@@ -446,13 +474,20 @@ export default function WeildCreateStudio({
         </button>
         <button
           onClick={handleSave}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-violet-500/20 text-violet-400 border border-violet-500/30 hover:bg-violet-500/30 transition-colors text-xs font-medium"
-          title="Save game (Ctrl+S)"
+          disabled={saving}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-violet-500/20 text-violet-400 border border-violet-500/30 ${saving ? 'opacity-60 cursor-not-allowed' : 'hover:bg-violet-500/30'} transition-colors text-xs font-medium`}
+          title={saving ? "Saving..." : "Save game (Ctrl+S)"}
         >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-          </svg>
-          Save
+          {saving ? (
+            <svg className="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+            </svg>
+          )}
+          {saving ? "Saving..." : "Save"}
         </button>
         {onExit && (
           <button
